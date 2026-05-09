@@ -156,6 +156,3 @@ sudo nerdctl rm -f test-ttyd
 - **Base image:** Ubuntu 22.04 + Python + Node + ttyd pre-installed
 - **Stack:** Go API + vanilla JS dashboard
 
----
-
-Is anything missing or wrong? Want to correct course before Phase 2?

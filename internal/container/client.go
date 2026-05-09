@@ -6,133 +6,82 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/cio"
-	"github.com/containerd/containerd/namespaces"
-	"github.com/containerd/containerd/oci"
-	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
 const (
-	defaultNamespace   = "vps-provider"
-	baseImage          = "docker.io/library/vps-base:latest"
 	defaultMemoryLimit = 512 * 1024 * 1024 // 512MB
 	defaultCPUMax      = "50000"            // 50% of 1 core
 	defaultPidsLimit   = 64
 	ttydPort           = 7681
+	namespace          = "vps-provider"
 )
 
-type Client struct {
-	client *containerd.Client
-}
+type Client struct{}
 
 func NewClient(socketPath string) (*Client, error) {
-	client, err := containerd.New(socketPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to containerd: %w", err)
-	}
-	return &Client{client: client}, nil
+	return &Client{}, nil
 }
 
 func (c *Client) Close() error {
-	return c.client.Close()
+	return nil
 }
 
 func (c *Client) CreateContainer(ctx context.Context, sessionID string) (*ContainerInfo, error) {
-	ctx = namespaces.WithNamespace(ctx, defaultNamespace)
-
-	// Try to get image - nerdctl stores in default namespace usually
-	image, err := c.client.GetImage(ctx, baseImage)
-	if err != nil {
-		// Try to pull or find in default namespace
-		image, err = c.client.Pull(ctx, baseImage, containerd.WithPullUnpack)
-		if err != nil {
-			return nil, fmt.Errorf("image %s not found: %w", baseImage, err)
-		}
-	}
-
-	// Build OCI spec
-	opts := []oci.SpecOpts{
-		oci.WithDefaultSpecForPlatform("linux/amd64"),
-		oci.WithDefaultPathEnv,
-		oci.WithProcessArgs("ttyd", "-p", fmt.Sprintf("%d", ttydPort), "-W", "/bin/bash"),
-		oci.WithUser("user"),
-		oci.WithAddedCapabilities([]string{"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_SETGID", "CAP_SETUID"}),
-		oci.WithNoNewPrivileges,
-		oci.WithLinuxNamespace(specs.LinuxNamespace{Type: specs.NetworkNamespace, Path: ""}),
-	}
-
-	// Create container
-	container, err := c.client.NewContainer(
-		ctx,
-		sessionID,
-		containerd.WithImage(image),
-		containerd.WithNewSnapshot(sessionID+"-snapshot", image),
-		containerd.WithNewSpec(opts...),
+	// Use nerdctl run - handles CNI, image, everything
+	cmd := exec.CommandContext(ctx,
+		"nerdctl", "-n", namespace, "run", "-d",
+		"--name", sessionID,
+		"--memory", fmt.Sprintf("%d", defaultMemoryLimit),
+		"--cpus", "0.5",
+		"--pids-limit", fmt.Sprintf("%d", defaultPidsLimit),
+		"--read-only",
+		"--cap-drop", "ALL",
+		"--cap-add", "CHOWN",
+		"--cap-add", "DAC_OVERRIDE",
+		"--cap-add", "SETGID",
+		"--cap-add", "SETUID",
+		"--security-opt", "no-new-privileges=true",
+		"docker.io/library/vps-base:latest",
+		"ttyd", "-p", fmt.Sprintf("%d", ttydPort), "-W", "/bin/bash",
 	)
+
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create container: %w", err)
+		return nil, fmt.Errorf("nerdctl run failed: %w\noutput: %s", err, string(out))
 	}
 
-	// Create task
-	task, err := container.NewTask(ctx, cio.NewCreator(cio.WithStdio))
-	if err != nil {
-		container.Delete(ctx, containerd.WithSnapshotCleanup)
-		return nil, fmt.Errorf("failed to create task: %w", err)
-	}
+	containerID := strings.TrimSpace(string(out))
 
-	// Start task
-	if err := task.Start(ctx); err != nil {
-		task.Delete(ctx, containerd.WithProcessKill)
-		container.Delete(ctx, containerd.WithSnapshotCleanup)
-		return nil, fmt.Errorf("failed to start task: %w", err)
-	}
+	// Wait for network
+	time.Sleep(2 * time.Second)
 
-	// Wait for network setup
-	time.Sleep(1 * time.Second)
-
-	// Discover IP via nerdctl inspect
+	// Get IP
 	ip, err := c.discoverIP(sessionID)
 	if err != nil {
-		ip = "" // Non-fatal
+		ip = ""
 	}
 
 	return &ContainerInfo{
-		ContainerID: sessionID,
-		TaskID:      task.ID(),
+		ContainerID: containerID,
 		IP:          ip,
 		TTYDPort:    ttydPort,
 	}, nil
 }
 
 func (c *Client) DestroyContainer(ctx context.Context, containerID string) error {
-	ctx = namespaces.WithNamespace(ctx, defaultNamespace)
-
-	container, err := c.client.LoadContainer(ctx, containerID)
+	cmd := exec.CommandContext(ctx, "nerdctl", "-n", namespace, "rm", "-f", containerID)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to load container: %w", err)
+		return fmt.Errorf("nerdctl rm failed: %w\noutput: %s", err, string(out))
 	}
-
-	task, err := container.Task(ctx, cio.Load)
-	if err == nil {
-		task.Kill(ctx, 9)
-		task.Delete(ctx, containerd.WithProcessKill)
-	}
-
-	if err := container.Delete(ctx, containerd.WithSnapshotCleanup); err != nil {
-		return fmt.Errorf("failed to delete container: %w", err)
-	}
-
 	return nil
 }
 
 func (c *Client) discoverIP(containerID string) (string, error) {
-	// Use nerdctl to inspect container in our namespace
-	cmd := exec.Command("nerdctl", "-n", "vps-provider", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", containerID)
+	cmd := exec.Command("nerdctl", "-n", namespace, "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", containerID)
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("nerdctl inspect failed: %w", err)
+		return "", err
 	}
 	ip := strings.TrimSpace(string(out))
 	if ip == "" {
@@ -143,7 +92,6 @@ func (c *Client) discoverIP(containerID string) (string, error) {
 
 type ContainerInfo struct {
 	ContainerID string
-	TaskID      string
 	IP          string
 	TTYDPort    int
 }

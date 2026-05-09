@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Terminal</title>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <style>
+        body { margin: 0; padding: 0; background: #000; height: 100vh; }
+        #terminal { width: 100%; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="terminal"></div>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get('id');
+        
+        if (!sessionId) {
+            alert('No session ID provided');
+            throw new Error('No session ID');
+        }
+
+        const term = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'monospace',
+            theme: { background: '#000000' }
+        });
+
+        term.open(document.getElementById('terminal'));
+        term.fit = () => {
+            const dims = term.proposeDimensions();
+            if (dims) term.resize(dims.cols, dims.rows);
+        };
+
+        const ws = new WebSocket(`ws://${window.location.host}/api/v1/sessions/${sessionId}/terminal`);
+        
+        ws.onopen = () => {
+            term.fit();
+            term.writeln('Connected to container terminal...');
+        };
+
+        ws.onmessage = (event) => {
+            if (event.data instanceof Blob) {
+                event.data.arrayBuffer().then(buf => {
+                    term.write(new Uint8Array(buf));
+                });
+            } else {
+                term.write(event.data);
+            }
+        };
+
+        ws.onclose = () => {
+            term.writeln('\\r\\n\\r\\n[Disconnected]');
+        };
+
+        ws.onerror = (err) => {
+            term.writeln('\\r\\n[Connection error]');
+        };
+
+        term.onData(data => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(data);
+            }
+        });
+
+        term.onResize(({ cols, rows }) => {
+            // ttyd handles resize via escape sequences, xterm.js sends them automatically
+        });
+
+        window.addEventListener('resize', () => term.fit());
+    </script>
+</body>
+</html>

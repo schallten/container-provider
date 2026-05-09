@@ -9,4 +9,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/sessions", h.ListSessions)
 	mux.HandleFunc("GET /api/v1/sessions/{id}", h.GetSession)
 	mux.HandleFunc("DELETE /api/v1/sessions/{id}", h.DestroySession)
+	
+	// Terminal WebSocket - explicit GET for now, upgrade handles the rest
+	mux.HandleFunc("GET /api/v1/sessions/{id}/terminal", h.TerminalWS)
 }

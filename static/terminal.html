@@ -3,73 +3,76 @@
 <head>
     <meta charset="utf-8">
     <title>Terminal</title>
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
     <style>
-        body { margin: 0; padding: 0; background: #000; height: 100vh; }
-        #terminal { width: 100%; height: 100vh; }
+        body { margin: 0; padding: 0; background: #000; color: #0f0; font-family: monospace; font-size: 14px; }
+        #terminal { width: 100%; height: 100vh; padding: 10px; box-sizing: border-box; overflow-y: auto; }
+        #input-line { display: flex; }
+        #prompt { color: #0f0; margin-right: 5px; }
+        #input { background: transparent; border: none; color: #0f0; font-family: monospace; font-size: 14px; flex: 1; outline: none; }
+        .output { color: #ccc; white-space: pre-wrap; margin: 2px 0; }
     </style>
 </head>
 <body>
-    <div id="terminal"></div>
+    <div id="terminal">
+        <div class="output">Connected to container terminal...</div>
+        <div id="input-line">
+            <span id="prompt">$ </span>
+            <input type="text" id="input" autofocus autocomplete="off" spellcheck="false">
+        </div>
+    </div>
     <script>
         const params = new URLSearchParams(window.location.search);
         const sessionId = params.get('id');
-        
         if (!sessionId) {
-            alert('No session ID provided');
+            alert('No session ID');
             throw new Error('No session ID');
         }
 
-        const term = new Terminal({
-            cursorBlink: true,
-            fontSize: 14,
-            fontFamily: 'monospace',
-            theme: { background: '#000000' }
-        });
-
-        term.open(document.getElementById('terminal'));
-        term.fit = () => {
-            const dims = term.proposeDimensions();
-            if (dims) term.resize(dims.cols, dims.rows);
-        };
-
+        const terminal = document.getElementById('terminal');
+        const input = document.getElementById('input');
         const ws = new WebSocket(`ws://${window.location.host}/api/v1/sessions/${sessionId}/terminal`);
         
         ws.onopen = () => {
-            term.fit();
-            term.writeln('Connected to container terminal...');
+            console.log('WebSocket connected');
         };
 
         ws.onmessage = (event) => {
-            if (event.data instanceof Blob) {
-                event.data.arrayBuffer().then(buf => {
-                    term.write(new Uint8Array(buf));
-                });
-            } else {
-                term.write(event.data);
-            }
+            const div = document.createElement('div');
+            div.className = 'output';
+            div.textContent = event.data;
+            terminal.insertBefore(div, document.getElementById('input-line'));
+            terminal.scrollTop = terminal.scrollHeight;
         };
 
         ws.onclose = () => {
-            term.writeln('\\r\\n\\r\\n[Disconnected]');
+            const div = document.createElement('div');
+            div.className = 'output';
+            div.textContent = '[Disconnected]';
+            terminal.insertBefore(div, document.getElementById('input-line'));
+            input.disabled = true;
         };
 
         ws.onerror = (err) => {
-            term.writeln('\\r\\n[Connection error]');
+            console.error('WebSocket error:', err);
         };
 
-        term.onData(data => {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(data);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const cmd = input.value;
+                if (cmd.trim() && ws.readyState === WebSocket.OPEN) {
+                    ws.send(cmd + '\n');
+                    const div = document.createElement('div');
+                    div.className = 'output';
+                    div.innerHTML = '<span style="color:#0f0">$ ' + cmd + '</span>';
+                    terminal.insertBefore(div, document.getElementById('input-line'));
+                    input.value = '';
+                    terminal.scrollTop = terminal.scrollHeight;
+                }
             }
         });
 
-        term.onResize(({ cols, rows }) => {
-            // ttyd handles resize via escape sequences, xterm.js sends them automatically
-        });
-
-        window.addEventListener('resize', () => term.fit());
+        input.focus();
+        document.addEventListener('click', () => input.focus());
     </script>
 </body>
 </html>

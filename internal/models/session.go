@@ -1,8 +1,7 @@
+
 package models
 
-import (
-	"time"
-)
+import "time"
 
 type SessionStatus string
 
@@ -18,11 +17,9 @@ type Session struct {
 	ID          string        `json:"id"`
 	Status      SessionStatus `json:"status"`
 	ContainerID string        `json:"container_id,omitempty"`
-	IP          string        `json:"ip,omitempty"`
 	CreatedAt   time.Time     `json:"created_at"`
 	ExpiresAt   time.Time     `json:"expires_at"`
 	DetachedAt  *time.Time    `json:"detached_at,omitempty"`
-	TTYDPort    int           `json:"ttyd_port,omitempty"`
 }
 
 type CreateSessionRequest struct {

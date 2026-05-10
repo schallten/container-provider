@@ -1,3 +1,4 @@
+
 package container
 
 import (
@@ -9,10 +10,9 @@ import (
 )
 
 const (
-	defaultMemoryLimit = 512 * 1024 * 1024 // 512MB
-	defaultCPUMax      = "50000"            // 50% of 1 core
+	defaultMemoryLimit = 512 * 1024 * 1024
+	defaultCPUMax      = "50000"
 	defaultPidsLimit   = 64
-	ttydPort           = 7681
 	namespace          = "vps-provider"
 )
 
@@ -27,7 +27,6 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) CreateContainer(ctx context.Context, sessionID string) (*ContainerInfo, error) {
-	// Use nerdctl run - handles CNI, image, everything
 	cmd := exec.CommandContext(ctx,
 		"nerdctl", "-n", namespace, "run", "-d",
 		"--name", sessionID,
@@ -42,7 +41,7 @@ func (c *Client) CreateContainer(ctx context.Context, sessionID string) (*Contai
 		"--cap-add", "SETUID",
 		"--security-opt", "no-new-privileges=true",
 		"docker.io/library/vps-base:latest",
-		"ttyd", "-p", fmt.Sprintf("%d", ttydPort), "-W", "/bin/bash",
+		"sleep", "infinity",
 	)
 
 	out, err := cmd.CombinedOutput()
@@ -51,20 +50,10 @@ func (c *Client) CreateContainer(ctx context.Context, sessionID string) (*Contai
 	}
 
 	containerID := strings.TrimSpace(string(out))
-
-	// Wait for network
-	time.Sleep(2 * time.Second)
-
-	// Get IP
-	ip, err := c.discoverIP(sessionID)
-	if err != nil {
-		ip = ""
-	}
+	time.Sleep(500 * time.Millisecond)
 
 	return &ContainerInfo{
 		ContainerID: containerID,
-		IP:          ip,
-		TTYDPort:    ttydPort,
 	}, nil
 }
 
@@ -77,21 +66,6 @@ func (c *Client) DestroyContainer(ctx context.Context, containerID string) error
 	return nil
 }
 
-func (c *Client) discoverIP(containerID string) (string, error) {
-	cmd := exec.Command("nerdctl", "-n", namespace, "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", containerID)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	ip := strings.TrimSpace(string(out))
-	if ip == "" {
-		return "", fmt.Errorf("no IP found")
-	}
-	return ip, nil
-}
-
 type ContainerInfo struct {
 	ContainerID string
-	IP          string
-	TTYDPort    int
 }

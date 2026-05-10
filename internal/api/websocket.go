@@ -1,116 +1,98 @@
+
 package api
 
 import (
+	"bufio"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
+	"os/exec"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
-	"vps-provider/internal/models"
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 func (h *Handler) TerminalWS(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[DEBUG] TerminalWS called: %s %s", r.Method, r.URL.Path)
-	
-	id := r.PathValue("id")
-	log.Printf("[DEBUG] extracted id: %s", id)
-	
+	id := chi.URLParam(r, "id")
+	log.Printf("[DEBUG] TerminalWS: id=%s", id)
+
 	if id == "" {
-		log.Printf("[DEBUG] id is empty, returning 400")
 		http.Error(w, "session id required", http.StatusBadRequest)
 		return
 	}
 
 	session, ok := h.store.Get(id)
-	log.Printf("[DEBUG] store.Get returned: ok=%v, session=%+v", ok, session)
-	
 	if !ok {
-		log.Printf("[DEBUG] session not found, returning 404")
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
-
-	if session.Status != models.StatusRunning {
-		log.Printf("[DEBUG] session not running, status=%s, returning 400", session.Status)
+	if session.Status != "running" {
 		http.Error(w, "session not running", http.StatusBadRequest)
 		return
 	}
 
-	if session.IP == "" {
-		log.Printf("[DEBUG] session has no IP, returning 500")
-		http.Error(w, "session has no IP", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("[DEBUG] attempting WebSocket upgrade")
-	
-	// Upgrade client connection to WebSocket
 	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("[ERROR] ws upgrade failed: %v", err)
+		log.Printf("[ERROR] ws upgrade: %v", err)
 		return
 	}
 	defer clientConn.Close()
 
-	log.Printf("[DEBUG] WebSocket upgraded, connecting to ttyd at %s:7681", session.IP)
-
-	// Connect to ttyd inside container
-	ttydURL := url.URL{Scheme: "ws", Host: session.IP + ":7681", Path: "/ws"}
-	ttydConn, _, err := websocket.DefaultDialer.Dial(ttydURL.String(), nil)
+	// Use script to force a PTY, no -t flag needed
+	cmd := exec.Command("nerdctl", "-n", "vps-provider", "exec", "-i", session.ContainerID, 
+		"script", "-q", "/dev/null", "/bin/bash")
+	
+	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		log.Printf("[ERROR] failed to connect to ttyd at %s: %v", ttydURL.String(), err)
-		clientConn.WriteMessage(websocket.TextMessage, []byte("Failed to connect to container terminal"))
+		log.Printf("[ERROR] stdin pipe: %v", err)
 		return
 	}
-	defer ttydConn.Close()
+	
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Printf("[ERROR] stdout pipe: %v", err)
+		return
+	}
 
-	// Update status to running (in case it was detached)
-	h.store.UpdateStatus(id, models.StatusRunning)
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Printf("[ERROR] stderr pipe: %v", err)
+		return
+	}
 
-	log.Printf("[INFO] terminal connected for session %s", id)
+	if err := cmd.Start(); err != nil {
+		log.Printf("[ERROR] start bash: %v", err)
+		return
+	}
+	defer cmd.Process.Kill()
 
-	// Bidirectional copy
-	errChan := make(chan error, 2)
+	log.Printf("[INFO] terminal connected: %s", id)
 
+	// Forward: WebSocket -> bash stdin
 	go func() {
 		for {
-			msgType, data, err := ttydConn.ReadMessage()
+			_, data, err := clientConn.ReadMessage()
 			if err != nil {
-				errChan <- err
 				return
 			}
-			if err := clientConn.WriteMessage(msgType, data); err != nil {
-				errChan <- err
-				return
-			}
+			stdin.Write(append(data, '\n'))
 		}
 	}()
 
+	// Forward: bash stdout/stderr -> WebSocket
 	go func() {
-		for {
-			msgType, data, err := clientConn.ReadMessage()
-			if err != nil {
-				errChan <- err
-				return
-			}
-			if err := ttydConn.WriteMessage(msgType, data); err != nil {
-				errChan <- err
-				return
-			}
+		reader := io.MultiReader(stdout, stderr)
+		scanner := bufio.NewScanner(reader)
+		for scanner.Scan() {
+			line := scanner.Text()
+			clientConn.WriteMessage(websocket.TextMessage, []byte(line+"\r\n"))
 		}
 	}()
 
-	// Wait for either direction to fail
-	err = <-errChan
-	log.Printf("[INFO] terminal disconnected for session %s: %v", id, err)
-
-	// Mark as detached
-	h.store.UpdateStatus(id, models.StatusDetached)
+	cmd.Wait()
+	log.Printf("[INFO] terminal disconnected: %s", id)
 }

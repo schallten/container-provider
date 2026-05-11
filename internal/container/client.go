@@ -1,4 +1,4 @@
-
+// cat > ~/vps-provider/container-provider/internal/container/client.go << 'EOF'
 package container
 
 import (
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -15,6 +16,8 @@ const (
 	defaultPidsLimit   = 64
 	namespace          = "vps-provider"
 )
+
+var appPortCounter int32 = 31000
 
 type Client struct{}
 
@@ -33,7 +36,6 @@ func (c *Client) CreateContainer(ctx context.Context, sessionID string) (*Contai
 		"--memory", fmt.Sprintf("%d", defaultMemoryLimit),
 		"--cpus", "0.5",
 		"--pids-limit", fmt.Sprintf("%d", defaultPidsLimit),
-		"--read-only",
 		"--cap-drop", "ALL",
 		"--cap-add", "CHOWN",
 		"--cap-add", "DAC_OVERRIDE",
@@ -66,6 +68,11 @@ func (c *Client) DestroyContainer(ctx context.Context, containerID string) error
 	return nil
 }
 
+func (c *Client) AllocateAppPort() int {
+	return int(atomic.AddInt32(&appPortCounter, 1))
+}
+
 type ContainerInfo struct {
 	ContainerID string
 }
+// EOF

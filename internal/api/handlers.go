@@ -1,3 +1,4 @@
+//cat > ~/vps-provider/container-provider/internal/api/handlers.go << 'EOF'
 package api
 
 import (
@@ -84,7 +85,47 @@ func (h *Handler) DestroySession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Debug endpoint to mark session detached
+func (h *Handler) ExposePort(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "session id required", http.StatusBadRequest)
+		return
+	}
+
+	session, ok := h.store.Get(id)
+	if !ok {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	var req models.ExposePortRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Start cloudflared INSIDE the container
+	info, err := container.StartTunnel(r.Context(), id, session.ContainerID, req.ContainerPort)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	exposed := models.ExposedPort{
+		ContainerPort: req.ContainerPort,
+		PublicURL:     info.URL,
+	}
+	session.ExposedPorts = append(session.ExposedPorts, exposed)
+	h.store.UpdateStatus(id, session.Status)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models.ExposePortResponse{PublicURL: info.URL})
+}
+
 func (h *Handler) MarkDetached(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

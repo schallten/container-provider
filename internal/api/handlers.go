@@ -25,7 +25,7 @@ func (h *Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var req models.CreateSessionRequest
 	json.NewDecoder(r.Body).Decode(&req)
-
+	
 	ctx := r.Context()
 	session, err := h.lifecycle.CreateSession(ctx, req)
 	if err != nil {
@@ -81,5 +81,20 @@ func (h *Handler) DestroySession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Debug endpoint to mark session detached
+func (h *Handler) MarkDetached(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "session id required", http.StatusBadRequest)
+		return
+	}
+	h.store.UpdateStatus(id, models.StatusDetached)
 	w.WriteHeader(http.StatusNoContent)
 }

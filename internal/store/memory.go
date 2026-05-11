@@ -13,9 +13,7 @@ type MemoryStore struct {
 }
 
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{
-		sessions: make(map[string]*models.Session),
-	}
+	return &MemoryStore{sessions: make(map[string]*models.Session)}
 }
 
 func (s *MemoryStore) Create(session *models.Session) {
@@ -34,7 +32,6 @@ func (s *MemoryStore) Get(id string) (*models.Session, bool) {
 func (s *MemoryStore) List() []models.Session {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	result := make([]models.Session, 0, len(s.sessions))
 	for _, sess := range s.sessions {
 		result = append(result, *sess)
@@ -45,7 +42,6 @@ func (s *MemoryStore) List() []models.Session {
 func (s *MemoryStore) UpdateStatus(id string, status models.SessionStatus) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	sess, ok := s.sessions[id]
 	if !ok {
 		return false
@@ -63,24 +59,10 @@ func (s *MemoryStore) UpdateStatus(id string, status models.SessionStatus) bool 
 func (s *MemoryStore) Delete(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	_, ok := s.sessions[id]
 	if !ok {
 		return false
 	}
 	delete(s.sessions, id)
 	return true
-}
-
-func (s *MemoryStore) GetActive() []*models.Session {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var active []*models.Session
-	for _, sess := range s.sessions {
-		if sess.Status != models.StatusDestroyed && sess.Status != models.StatusDestroying {
-			active = append(active, sess)
-		}
-	}
-	return active
 }

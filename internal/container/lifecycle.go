@@ -1,4 +1,3 @@
-
 package container
 
 import (
@@ -50,7 +49,38 @@ func (lm *LifecycleManager) CreateSession(ctx context.Context, req models.Create
 		log.Printf("[INFO] session %s running", sessionID)
 	}()
 
+	// Start TTL tracker
+	go lm.ttlTracker(sessionID)
+
 	return session, nil
+}
+
+func (lm *LifecycleManager) ttlTracker(sessionID string) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		session, ok := lm.store.Get(sessionID)
+		if !ok {
+			return // Session gone
+		}
+
+		// Check 12h max TTL
+		if time.Now().After(session.ExpiresAt) {
+			log.Printf("[TTL] session %s expired (12h)", sessionID)
+			lm.DestroySession(context.Background(), sessionID)
+			return
+		}
+
+		// Check 15m grace period
+		if session.Status == models.StatusDetached && session.DetachedAt != nil {
+			if time.Since(*session.DetachedAt) > 30*time.Second {
+				log.Printf("[TTL] session %s grace expired (1m)", sessionID)
+				lm.DestroySession(context.Background(), sessionID)
+				return
+			}
+		}
+	}
 }
 
 func (lm *LifecycleManager) DestroySession(ctx context.Context, sessionID string) error {

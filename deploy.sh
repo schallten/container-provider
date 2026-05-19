@@ -58,7 +58,7 @@ fi
 
 echo -e "${YELLOW}[3/5] Installing Go...${NC}"
 if ! command -v go &> /dev/null; then
-  GO_VERSION="1.21.0"
+  GO_VERSION="1.26.1"
   wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
   sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
   rm go${GO_VERSION}.linux-amd64.tar.gz
@@ -103,8 +103,8 @@ Requires=docker.service
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/tempdev
-ExecStart=/home/ubuntu/tempdev/tempdev
+WorkingDirectory=/home/ubuntu/container-provider
+ExecStart=/home/ubuntu/container-provider/tempdev
 Restart=always
 RestartSec=5
 StandardOutput=journal

@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TempDev - Temporary Cloud Dev Environments</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.1.0/xterm.min.css" />
   <style>
     * {
       margin: 0;
@@ -316,8 +315,9 @@
   </div>
 
   <!-- Load xterm.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.1.0/xterm.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.1.0/xterm-addon-fit.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/xterm@5.1.0/css/xterm.css" />
+  <script src="https://unpkg.com/xterm@5.1.0/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
 
   <script>
     // ========================================================================
@@ -331,7 +331,7 @@
     let lastActivityTime = null;
 
     const Terminal = window.Terminal;
-    const FitAddon = window.FitAddon;
+    const FitAddon = window.FitAddon.FitAddon;
 
     // ========================================================================
     // Create Environment

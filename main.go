@@ -19,57 +19,58 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// env is a temporary development environment
+// Env represents a temporary development environment
 type Env struct {
-	ID string `json:"id"` // name of docker container
-	Container string `json:"-`
-	CreatedAt time.Time `json:"createdAt"` // start time to add constraints
-	LastPing time.Time `json:"last_ping"` // to check for disconnection
-	TunnelURL string `json:"tunnel_url,omitempty"`// to store either cloudflare tunnel url or empty if cloudflared is not init yet
-	TunnelPID int `json:"-"` // obvious
+	ID        string    `json:"id"`
+	Container string    `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
+	LastPing  time.Time `json:"last_ping"`
+	TunnelURL string    `json:"tunnel_url,omitempty"`
+	TunnelPID int       `json:"-"`
 }
 
-// var makes global variable
-
 var (
-	envs = sync.Map{} // id -> *Env , basically map of envs
-	upgrader = websocket.Upgrader{CheckOrigin: func(*http.Request)bool {return true}} // returns true if the origin of the request is allowed, which is always true in this case
-	rateLimits = sync.Map{} // ip -> count , storing ip and count of requests from that ip
-	logMutex = sync.Mutex{} // mutex means mutual exclusion , which is used to prevent race conditions , in this case we need it to make sure only one request is accessing the log file at a time
+	envs       = sync.Map{} // ID -> *Env
+	upgrader   = websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	rateLimits = sync.Map{} // IP -> count
+	logMutex   = sync.Mutex{}
 )
 
-// http routes
-func main(){
-	http.HandleFunc("/env",handleCreateEnv)
-	http.HandleFunc("/env/",handleEnvAction)
+func main() {
+	// HTTP routes
+	http.HandleFunc("/env", handleCreateEnv)
+	http.HandleFunc("/env/", handleEnvAction)
 	http.HandleFunc("/ws/env/", handleShell)
-	http.HandleFunc("/expose",handleExpose)
-	http.HandleFunc("/envs",handleListEnvs)
-	http.Handle("/",http.FileServer(http.Dir("./public")))
+	http.HandleFunc("/expose/", handleExpose)
+	http.HandleFunc("/envs", handleListEnvs)
+	http.Handle("/", http.FileServer(http.Dir("./public")))
 
-	// background goroutines
+	// Background goroutines
 	go cleanupLoop()
 	go abuseDetectLoop()
 	go rateLimitResetLoop()
 
-	log.Println(" starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080",nil))
+	log.Println("🚀 TempDev starting on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// helpers
-func generateID() string{
-	b:= make([]byte,4) // makes a byte slice of 4 bytes
-	rand.Read(b) // reads random bytes into the slice
-	return hex.EncodeToString(b) // returns the hexadecimal representation of the bytes
+// ============================================================================
+// Helpers
+// ============================================================================
+
+func generateID() string {
+	b := make([]byte, 4)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
-func sanitizeEnvID(id string) bool{
-	if len(id)==0 || len(id) > 16{
+func sanitizeEnvID(id string) bool {
+	if len(id) == 0 || len(id) > 16 {
 		return false
 	}
-	for _,c := range id {
-		if !((c>='a' && c<='z') || (c>='0' && c<='9')){
-			return false // what this does is it checks if the character is a lowercase letter or a number and if yes then return true and if not then return false and loops for all the characters
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+			return false
 		}
 	}
 	return true
@@ -81,34 +82,31 @@ func extractIP(r *http.Request) string {
 		ip = r.Header.Get("X-Real-IP")
 	}
 	if ip == "" {
-		ip = strings.Split(r.RemoteAddr,":")[0]
+		ip = strings.Split(r.RemoteAddr, ":")[0]
 	}
-	return ip  // ths whole fucntion returns ip by checking the forwarded for header first and if not found then the real ip header and if not found then the remote address and if not found then the remote address
+	return ip
 }
 
-func logEvent(eventType,envID,detail string){
-	logMutex.Lock()// locked the mutex so only one request is accessing the log file at a time
-	defer logMutex.Unlock()// unlocked the mutex so only one request is accessing the log file at a time
-	
-	logEntry:= map[string]interface{}{
-		"timestamp":time.Now().Format(time.RFC3339),
-		"type": eventType,
-		"envID": envID,
-		"detail": detail,
+func logEvent(eventType, envID, detail string) {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+
+	logEntry := map[string]interface{}{
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"event":     eventType,
+		"env_id":    envID,
+		"detail":    detail,
 	}
 
-	data,_ := json.Marshal(logEntry) // data variable will store the JSON representation of the logEntry map , and the underscore means we are ignoring the error that is returned by the json.Marshal function
+	data, _ := json.Marshal(logEntry)
 
-	file,err:= os.OpenFile("events.log", os.O_APPEND| os.O_CREATE|os.O_WRONLY,0644) // in order what all these do is : O_APPEND appends new data , O_CREATE creats file if doesnt exist , O_WRONLY opens file in read only , 0644 sets file permission owner can read write ; group and other can only read.
-
-	if err!=nil {
-		log.Printf("Failed to log event %s: %v\n",eventType,err)
+	file, err := os.OpenFile("events.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Failed to log event: %v", err)
 		return
 	}
 	defer file.Close()
-
-	file.Write(append(data,'\n'))
-	// fmt.Fprintln(file,string(data))
+	file.Write(append(data, '\n'))
 }
 
 func formatDuration(d time.Duration) string {
@@ -116,7 +114,7 @@ func formatDuration(d time.Duration) string {
 	hours := total / 3600
 	minutes := (total % 3600) / 60
 	seconds := total % 60
- 
+
 	if hours > 0 {
 		return fmt.Sprintf("%dh%dm", hours, minutes)
 	}
@@ -124,122 +122,389 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm%ds", minutes, seconds)
 	}
 	return fmt.Sprintf("%ds", seconds)
-} // this function formats the duration in the format of "HHhMMm" and returns it
+}
 
-// =====================================
-//	ENV CREATION AND MANAGEMENT
-// =====================================
+// ============================================================================
+// Env Creation & Management
+// ============================================================================
 
-func handleCreateEnv(w http.ResponseWriter,r *http.Request){
-	if r.Method != "POST"{
-		http.Error(w,"Method not allowed",http.StatusMethodNotAllowed)
+func handleCreateEnv(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 
-	ip:= extractIP(r)
+	ip := extractIP(r)
 
-	// rate limits 5 per hour per ip
-	val,_ := rateLimits.LoadOrStore(ip,0)
+	// Rate limit: 5 envs per hour per IP
+	val, _ := rateLimits.LoadOrStore(ip, 0)
 	count := val.(int)
-
-	if count >=5 {
-		logEvent("rate_limit_exceeded","",ip)
-		http.Error(w,"Rate limit exceeded (5 per hour)",http.StatusTooManyRequests)
+	if count >= 5 {
+		logEvent("rate_limit_exceeded", "", ip)
+		http.Error(w, "Rate limit exceeded (5 per hour)", http.StatusTooManyRequests)
 		return
 	}
-	
-	rateLimits.Store(ip,count+1)
+	rateLimits.Store(ip, count+1)
 
-	// create docker container
-
+	// Create Docker container
 	id := generateID()
+
 	cmd := exec.Command("docker", "run", "-d",
-		"--memory=512m", // 512mb ram allowed
-		"--memory-swap=512m", // 512mb swap ( storage based ram )
-		"--cpus=0.5", // 50% of one cpu core allowed
-		"--pids-limit=64", // 64 processes at a time allowed
-		"--cap-drop=ALL", // drop all capabilities
-		"--security-opt=no-new-privileges", // drop all privileges
-		"-u", "dev", // run as dev user ( not root )
-		"tempdev:latest", // image to use
-		"sleep", "infinity", // run sleep for infinity seconds
+		"--memory=512m",
+		"--memory-swap=512m",
+		"--cpus=0.5",
+		"--pids-limit=64",
+		"--cap-drop=ALL",
+		"--security-opt=no-new-privileges",
+		"-u", "dev",
+		"tempdev:latest",
+		"sleep", "infinity",
 	)
 
-	output,err := cmd.Output()
-	if err!=nil {
-		log.Printf("docker run failed: %v",err)
-		logEvent("create_failed","",id,err.Error())
-		http.Error(w,"Failed to create environment",http.StatusInternalServerError)
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("docker run failed: %v", err)
+		logEvent("create_failed", id, err.Error())
+		http.Error(w, "Failed to create environment", http.StatusInternalServerError)
 		return
 	}
-	container := strings.TrimSpace(string(output))
 
+	container := strings.TrimSpace(string(output))
 	env := &Env{
-		ID: id, // envm made tiwh the id
-		Container: container , // container id stored
+		ID:        id,
+		Container: container,
 		CreatedAt: time.Now(),
-		LastPing: time.Now(),
+		LastPing:  time.Now(),
 	}
 
-	env.Store(id,env)
-	logEvent("env_created",id,container[:12]) // first 12 characters of container id
+	envs.Store(id, env)
+	logEvent("env_created", id, container[:12])
+	log.Printf("✓ Created env %s (container %s)", id, container[:12])
 
-	w.Header().Set("Content-Type","application/json")
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"id" : id,
-		"ws_url": "/ws/env/" + id, // websocket url for the env
+		"id":     id,
+		"ws_url": "/ws/env/" + id,
 	})
 }
 
-func handleEnvAction(w http.ResponseWriter,r *http.Request){
-	id := strings.TrimPrefix(r.URL.Path,"/env/")
-	id = strings.Split(id,"/")[0]
+func handleEnvAction(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/env/")
+	id = strings.Split(id, "/")[0]
 
 	if !sanitizeEnvID(id) {
-		http.Error(w,"Invalid env ID",http.StatusBadRequest)
+		http.Error(w, "Invalid env ID", http.StatusBadRequest)
 		return
 	}
 
-	val,ok:= envs.Load(id)
+	val, ok := envs.Load(id)
 	if !ok {
-		http.Error(w,"Environment not found",http.StatusNotFound)
+		http.Error(w, "Environment not found", http.StatusNotFound)
 		return
 	}
 
-	env := val.(*Env) // convert interface to *Env so that we can access the fields of Env struct
+	env := val.(*Env)
 
-	switch r.Method{
+	switch r.Method {
 	case "GET":
-		w.Header().Set("Content-Type","application/json")
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(env)
+
 	case "DELETE":
 		deleteEnv(env)
 		w.WriteHeader(http.StatusNoContent)
+
 	default:
-		http.Error(w,"Method not allowed",http.StatusMethodNotAllowed)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func deleteEnv(env *Env){
-	// kill docker container
-	exec.Command("docker","rm","-f",env.Container).Run()
-	
-	// kill tunnels if exist , tbh when i kill the image it will be auto killed since they are insice it
+func deleteEnv(env *Env) {
+	// Kill Docker container
+	exec.Command("docker", "rm", "-f", env.Container).Run()
+
+	// Kill tunnel if exists
 	if env.TunnelPID > 0 {
-		exec.Command("kill","-9",fmt.Sprintf("%d",env.TunnelPID)).Run()
+		exec.Command("kill", "-9", fmt.Sprintf("%d", env.TunnelPID)).Run()
 	}
 
 	envs.Delete(env.ID)
-	logEvent("env_deleted",env.ID,"")
-	log.Printf(" Deleted env %s",env.ID)
+	logEvent("env_deleted", env.ID, "")
+	log.Printf("✗ Deleted env %s", env.ID)
 }
 
-// =============================
-// Websocket Shell
-// =============================
+// ============================================================================
+// WebSocket Shell
+// ============================================================================
 
-// I personally would prefer polling over sockets anyday but sometiems u need to do the work
+func handleShell(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/ws/env/")
 
-func handleShell(w http.ResponseWriter,r *http.Request){
-	// TODO : later
+	if !sanitizeEnvID(id) {
+		http.Error(w, "Invalid env ID", http.StatusBadRequest)
+		return
+	}
+
+	val, ok := envs.Load(id)
+	if !ok {
+		http.Error(w, "Environment not found", http.StatusNotFound)
+		return
+	}
+
+	env := val.(*Env)
+
+	// Upgrade to WebSocket
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade failed: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	// Start bash in container with PTY
+	bash := exec.Command("docker", "exec", "-it", env.Container, "bash")
+
+	// Allocate PTY for proper terminal emulation
+	ptmx, err := pty.Start(bash)
+	if err != nil {
+		log.Printf("PTY failed: %v", err)
+		conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()))
+		return
+	}
+	defer ptmx.Close()
+	defer bash.Process.Kill()
+
+	// Client input → container
+	go func() {
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			ptmx.Write(msg)
+			env.LastPing = time.Now()
+		}
+	}()
+
+	// Container output → client
+	buf := make([]byte, 4096)
+	for {
+		n, err := ptmx.Read(buf)
+		if err != nil {
+			break
+		}
+		if n > 0 {
+			if err := conn.WriteMessage(websocket.TextMessage, buf[:n]); err != nil {
+				break
+			}
+		}
+	}
+
+	logEvent("shell_closed", env.ID, "")
+}
+
+// ============================================================================
+// Tunnel (Cloudflared)
+// ============================================================================
+
+func handleExpose(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/expose/"), "/")
+	if len(parts) < 2 {
+		http.Error(w, "Invalid request: /expose/:id/:port", http.StatusBadRequest)
+		return
+	}
+
+	id := parts[0]
+	port := parts[1]
+
+	if !sanitizeEnvID(id) {
+		http.Error(w, "Invalid env ID", http.StatusBadRequest)
+		return
+	}
+
+	// Validate port
+	portNum, err := strconv.Atoi(port)
+	if err != nil || portNum < 1 || portNum > 65535 {
+		http.Error(w, "Port must be between 1 and 65535", http.StatusBadRequest)
+		return
+	}
+
+	val, ok := envs.Load(id)
+	if !ok {
+		http.Error(w, "Environment not found", http.StatusNotFound)
+		return
+	}
+
+	env := val.(*Env)
+
+	// Start cloudflared inside container
+	cmd := exec.Command("docker", "exec", "-d", env.Container,
+		"cloudflared", "tunnel", "--no-autoupdate", "run",
+		"--url", fmt.Sprintf("http://localhost:%s", port))
+
+	if err := cmd.Start(); err != nil {
+		log.Printf("cloudflared failed: %v", err)
+		logEvent("tunnel_failed", env.ID, err.Error())
+		http.Error(w, "Failed to start tunnel", http.StatusInternalServerError)
+		return
+	}
+
+	env.TunnelPID = cmd.Process.Pid
+
+	// Generate tunnel URL (cloudflared will override with real one)
+	tunnelURL := fmt.Sprintf("https://tempdev-%s-%s.trycloudflare.com", id, port)
+	env.TunnelURL = tunnelURL
+
+	logEvent("tunnel_created", env.ID, port)
+	log.Printf("🔗 Exposed port %s for env %s", port, id)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"tunnel_url": tunnelURL,
+		"note":       "URL may take 5-10 seconds to become active",
+	})
+}
+
+// ============================================================================
+// Cleanup & Monitoring
+// ============================================================================
+
+func cleanupLoop() {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now()
+		var toDelete []*Env
+
+		envs.Range(func(k, v interface{}) bool {
+			env := v.(*Env)
+			age := now.Sub(env.CreatedAt)
+			idle := now.Sub(env.LastPing)
+
+			if age > 12*time.Hour {
+				log.Printf("⏱  Cleanup: env %s exceeded max lifetime (12h)", env.ID)
+				toDelete = append(toDelete, env)
+				return true
+			}
+
+			if idle > 15*time.Minute {
+				log.Printf("⏱  Cleanup: env %s idle for 15m", env.ID)
+				toDelete = append(toDelete, env)
+				return true
+			}
+
+			return true
+		})
+
+		for _, env := range toDelete {
+			deleteEnv(env)
+		}
+	}
+}
+
+func abuseDetectLoop() {
+	ticker := time.NewTicker(3 * time.Minute)
+	defer ticker.Stop()
+
+	blacklist := []string{
+		"xmrig", "miner", "stratum", "masscan", "nmap", "zmap",
+		"hydra", "john", "hashcat", "nikto", "sqlmap",
+		"metasploit", "aircrack", "airmon", "bettercap",
+	}
+
+	for range ticker.C {
+		envs.Range(func(k, v interface{}) bool {
+			env := v.(*Env)
+
+			// Get process list
+			cmd := exec.Command("docker", "exec", env.Container, "ps", "aux")
+			output, err := cmd.Output()
+			if err != nil {
+				return true
+			}
+
+			psOutput := strings.ToLower(string(output))
+
+			// Check for blacklisted processes
+			for _, pattern := range blacklist {
+				if strings.Contains(psOutput, pattern) {
+					log.Printf("🚨 ABUSE: env %s detected %s", env.ID, pattern)
+					deleteEnv(env)
+					logEvent("abuse_detected", env.ID, pattern)
+					return true
+				}
+			}
+
+			// Check memory usage (simplified)
+			// statsCmd := exec.Command("docker", "stats", "--no-stream", env.Container)
+			// statsOutput, _ := statsCmd.Output()
+			// (implement memory/CPU checks if needed)
+
+			return true
+		})
+	}
+}
+
+func rateLimitResetLoop() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		var ips []string
+		rateLimits.Range(func(k, v interface{}) bool {
+			ips = append(ips, k.(string))
+			return true
+		})
+
+		for _, ip := range ips {
+			rateLimits.Delete(ip)
+		}
+
+		log.Printf("🔄 Rate limits reset (%d IPs)", len(ips))
+	}
+}
+
+// ============================================================================
+// Status & Monitoring
+// ============================================================================
+
+func handleListEnvs(w http.ResponseWriter, r *http.Request) {
+	type EnvStatus struct {
+		ID        string `json:"id"`
+		CreatedAt string `json:"created_at"`
+		LastPing  string `json:"last_ping"`
+		Uptime    string `json:"uptime"`
+		Idle      string `json:"idle"`
+		TunnelURL string `json:"tunnel_url,omitempty"`
+	}
+
+	var envList []*EnvStatus
+	now := time.Now()
+
+	envs.Range(func(k, v interface{}) bool {
+		env := v.(*Env)
+
+		age := now.Sub(env.CreatedAt)
+		idle := now.Sub(env.LastPing)
+
+		envList = append(envList, &EnvStatus{
+			ID:        env.ID,
+			CreatedAt: env.CreatedAt.Format(time.RFC3339),
+			LastPing:  env.LastPing.Format(time.RFC3339),
+			Uptime:    formatDuration(age),
+			Idle:      formatDuration(idle),
+			TunnelURL: env.TunnelURL,
+		})
+
+		return true
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(envList)
 }

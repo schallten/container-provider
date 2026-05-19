@@ -9,15 +9,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
-
 
 // env is a temporary development environment
 type Env struct {
@@ -142,6 +142,104 @@ func handleCreateEnv(w http.ResponseWriter,r *http.Request){
 	val,_ := rateLimits.LoadOrStore(ip,0)
 	count := val.(int)
 
-	// TODO : TODO
+	if count >=5 {
+		logEvent("rate_limit_exceeded","",ip)
+		http.Error(w,"Rate limit exceeded (5 per hour)",http.StatusTooManyRequests)
+		return
+	}
 	
+	rateLimits.Store(ip,count+1)
+
+	// create docker container
+
+	id := generateID()
+	cmd := exec.Command("docker", "run", "-d",
+		"--memory=512m", // 512mb ram allowed
+		"--memory-swap=512m", // 512mb swap ( storage based ram )
+		"--cpus=0.5", // 50% of one cpu core allowed
+		"--pids-limit=64", // 64 processes at a time allowed
+		"--cap-drop=ALL", // drop all capabilities
+		"--security-opt=no-new-privileges", // drop all privileges
+		"-u", "dev", // run as dev user ( not root )
+		"tempdev:latest", // image to use
+		"sleep", "infinity", // run sleep for infinity seconds
+	)
+
+	output,err := cmd.Output()
+	if err!=nil {
+		log.Printf("docker run failed: %v",err)
+		logEvent("create_failed","",id,err.Error())
+		http.Error(w,"Failed to create environment",http.StatusInternalServerError)
+		return
+	}
+	container := strings.TrimSpace(string(output))
+
+	env := &Env{
+		ID: id, // envm made tiwh the id
+		Container: container , // container id stored
+		CreatedAt: time.Now(),
+		LastPing: time.Now(),
+	}
+
+	env.Store(id,env)
+	logEvent("env_created",id,container[:12]) // first 12 characters of container id
+
+	w.Header().Set("Content-Type","application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"id" : id,
+		"ws_url": "/ws/env/" + id, // websocket url for the env
+	})
+}
+
+func handleEnvAction(w http.ResponseWriter,r *http.Request){
+	id := strings.TrimPrefix(r.URL.Path,"/env/")
+	id = strings.Split(id,"/")[0]
+
+	if !sanitizeEnvID(id) {
+		http.Error(w,"Invalid env ID",http.StatusBadRequest)
+		return
+	}
+
+	val,ok:= envs.Load(id)
+	if !ok {
+		http.Error(w,"Environment not found",http.StatusNotFound)
+		return
+	}
+
+	env := val.(*Env) // convert interface to *Env so that we can access the fields of Env struct
+
+	switch r.Method{
+	case "GET":
+		w.Header().Set("Content-Type","application/json")
+		json.NewEncoder(w).Encode(env)
+	case "DELETE":
+		deleteEnv(env)
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w,"Method not allowed",http.StatusMethodNotAllowed)
+	}
+}
+
+func deleteEnv(env *Env){
+	// kill docker container
+	exec.Command("docker","rm","-f",env.Container).Run()
+	
+	// kill tunnels if exist , tbh when i kill the image it will be auto killed since they are insice it
+	if env.TunnelPID > 0 {
+		exec.Command("kill","-9",fmt.Sprintf("%d",env.TunnelPID)).Run()
+	}
+
+	envs.Delete(env.ID)
+	logEvent("env_deleted",env.ID,"")
+	log.Printf(" Deleted env %s",env.ID)
+}
+
+// =============================
+// Websocket Shell
+// =============================
+
+// I personally would prefer polling over sockets anyday but sometiems u need to do the work
+
+func handleShell(w http.ResponseWriter,r *http.Request){
+	// TODO : later
 }

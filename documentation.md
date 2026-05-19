@@ -1,3 +1,7 @@
+---
+layout: default
+title: "Documentation"
+---
 # Container Provider - Technical Documentation & API Reference
 
 This document provides a comprehensive technical overview, API specification, security model, and troubleshooting guide for Container Provider.

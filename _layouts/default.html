@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if page.title %}{{ page.title }} - {% endif %}{{ site.name }}</title>
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="apple-touch-img/logo-precomposed" href="{{ site.baseurl }}/img/logo.jpg">
+    <link rel="apple-touch-img/logo" href="{{ site.baseurl }}/img/logo.jpg">
+    <link rel="apple-touch-img/logo" sizes="72x72" href="{{ site.baseurl }}/img/logo.jpg">
+    <link rel="apple-touch-img/logo" sizes="114x114" href="{{ site.baseurl }}/img/logo.jpg">
+
+    <link href="{{ site.baseurl }}/css/styles.css" rel="stylesheet" type="text/css">
+    <link href="{{ site.baseurl }}/img/logo.jpg" rel="shortcut icon">
+</head>
+<body>
+  <div class="sidebar">
+    <a href="{{ site.baseurl }}/" class="logo">
+      <img src="{{ site.baseurl }}/img/logo.jpg">
+    </a>
+
+    <ul class="nav">
+      <div class="nav-inner">
+        <li><a href="{{ site.baseurl }}/"><span class="icon doc"></span>Home</a></li>
+        <li><a href="{{ site.baseurl }}/quickstart.html"><span class="icon info"></span>Quick Start</a></li>
+        <li><a href="{{ site.baseurl }}/documentation.html"><span class="icon code"></span>Documentation</a></li>
+        <li><a href="{{ site.baseurl }}/expose_guide.html"><span class="icon link"></span>Expose Guide</a></li>
+        <li><a href="https://github.com/schallten/container-provider" target="_blank"><span class="icon github"></span>GitHub</a></li>
+      </div>
+    </ul>
+  </div>
+  <div class="wrapper">
+    {{ content }}
+  </div>
+</body>
+</html>

@@ -1,3 +1,7 @@
+---
+layout: default
+title: "Quick Start"
+---
 # Container Provider - Quick Start Guide
 
 ## Prerequisites

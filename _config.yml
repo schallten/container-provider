@@ -1,0 +1,27 @@
+name: "Container Provider"
+description: "Lightweight temporary cloud development environments on demand."
+url: "https://schallten.github.io"
+baseurl: "/container-provider"
+permalink: /posts/:year/:month/:day/:title
+
+markdown: kramdown
+highlighter: rouge
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - Dockerfile
+  - go.mod
+  - go.sum
+  - main.go
+  - deploy.sh
+  - test_tunnel.py
+  - public/
+  - theme/
+  - LICENSE
+  - events.log
+  - logs/
+  - .gitignore
+  - README.md # We exclude it here because index.html does an include_relative on it, avoiding duplicate rendering

@@ -59,9 +59,6 @@ RUN curl -L https://github.com/cloudflare/cloudflared/releases/download/2024.1.0
 # Security Hardening
 # ============================================================================
 
-# Block AWS metadata server
-RUN echo "169.254.169.254 aws-metadata" >> /etc/hosts
-
 # Create non-root user
 RUN useradd -m -s /bin/bash -u 1000 dev && \
     mkdir -p /home/dev/.config && \

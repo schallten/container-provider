@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
+	// "io"
 	"log"
 	"net/http"
 	"os"
@@ -156,6 +156,7 @@ func handleCreateEnv(w http.ResponseWriter, r *http.Request) {
 		"--pids-limit=64",
 		"--cap-drop=ALL",
 		"--security-opt=no-new-privileges",
+		"--add-host", "aws-metadata:169.254.169.254",
 		"-u", "dev",
 		"tempdev:latest",
 		"sleep", "infinity",

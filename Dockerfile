@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y \
 # ttyd (terminal over WebSocket)
 # ============================================================================
 
-RUN curl -L https://github.com/tsl0922/ttyd/releases/download/1.6.3/ttyd.x86_64 \
+RUN curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.3/ttyd.x86_64 \
     -o /usr/local/bin/ttyd && \
     chmod +x /usr/local/bin/ttyd
 
@@ -51,7 +51,7 @@ RUN curl -L https://github.com/tsl0922/ttyd/releases/download/1.6.3/ttyd.x86_64 
 # cloudflared (tunneling)
 # ============================================================================
 
-RUN curl -L https://github.com/cloudflare/cloudflared/releases/download/2024.1.0/cloudflared-linux-amd64 \
+RUN curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
     -o /usr/local/bin/cloudflared && \
     chmod +x /usr/local/bin/cloudflared
 

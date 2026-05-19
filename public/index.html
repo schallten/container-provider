@@ -283,7 +283,7 @@
         <div id="tunnel-section">
           <span>Public:</span>
           <a id="tunnel-url" href="#" target="_blank">loading...</a>
-          <button onclick="copyTunnel()" class="secondary">Copy</button>
+          <button onclick="copyTunnel(event)" class="secondary">Copy</button>
         </div>
         <div id="controls">
           <button onclick="createEnv()">New</button>
@@ -446,18 +446,26 @@
       const url = `${protocol}//${window.location.host}/ws/env/${currentEnvId}`;
 
       ws = new WebSocket(url);
+      ws.binaryType = 'arraybuffer';
 
       ws.onopen = () => {
         console.log('WebSocket connected');
         term.focus();
         if (term) {
           term.write('\x1b[32m✓ Connected\x1b[0m\r\n');
+          // Send initial size
+          const dims = { cols: term.cols, rows: term.rows };
+          ws.send(JSON.stringify(dims));
         }
       };
 
       ws.onmessage = (event) => {
         if (term) {
-          term.write(event.data);
+          if (event.data instanceof ArrayBuffer) {
+            term.write(new Uint8Array(event.data));
+          } else {
+            term.write(event.data);
+          }
         }
         lastActivityTime = new Date();
       };
@@ -484,6 +492,12 @@
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(data);
             lastActivityTime = new Date();
+          }
+        });
+
+        term.onResize((size) => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ cols: size.cols, rows: size.rows }));
           }
         });
       }
@@ -534,7 +548,7 @@
       }
     }
 
-    function copyTunnel() {
+    function copyTunnel(event) {
       const url = document.getElementById('tunnel-url').href;
       navigator.clipboard.writeText(url).then(() => {
         const btn = event.target;

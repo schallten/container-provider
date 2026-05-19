@@ -264,12 +264,13 @@ func handleShell(w http.ResponseWriter, r *http.Request) {
 
 	// Start bash in container with PTY
 	bash := exec.Command("docker", "exec", "-it", env.Container, "bash")
+	bash.Env = append(os.Environ(), "TERM=xterm")
 
 	// Allocate PTY for proper terminal emulation
 	ptmx, err := pty.Start(bash)
 	if err != nil {
 		log.Printf("PTY failed: %v", err)
-		conn.WriteMessage(websocket.TextMessage, []byte("Error: "+err.Error()))
+		conn.WriteMessage(websocket.BinaryMessage, []byte("Error: "+err.Error()))
 		return
 	}
 	defer ptmx.Close()
@@ -282,6 +283,22 @@ func handleShell(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
+
+			// Check if it's a resize message (JSON)
+			if len(msg) > 0 && msg[0] == '{' {
+				var resize struct {
+					Cols uint16 `json:"cols"`
+					Rows uint16 `json:"rows"`
+				}
+				if err := json.Unmarshal(msg, &resize); err == nil {
+					pty.Setsize(ptmx, &pty.Winsize{
+						Cols: resize.Cols,
+						Rows: resize.Rows,
+					})
+					continue
+				}
+			}
+
 			ptmx.Write(msg)
 			env.LastPing = time.Now()
 		}
@@ -295,7 +312,7 @@ func handleShell(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if n > 0 {
-			if err := conn.WriteMessage(websocket.TextMessage, buf[:n]); err != nil {
+			if err := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
 				break
 			}
 		}
@@ -344,46 +361,61 @@ func handleExpose(w http.ResponseWriter, r *http.Request) {
 	env := val.(*Env)
 
 	// Start cloudflared in background and capture its output
-	// cloudflared prints the tunnel URL to stdout when it starts
+	// cloudflared prints the tunnel URL to stderr/stdout
 	cmdStr := fmt.Sprintf(`
-cloudflared tunnel --no-autoupdate run --url http://localhost:%s 2>&1 | tee /tmp/tunnel.log | grep -m1 "https://" &
+cloudflared tunnel --no-autoupdate --url http://localhost:%s > /tmp/tunnel.log 2>&1 &
 `, port)
 
-	startCmd := exec.Command("docker", "exec", "-d", env.Container, "bash", "-c", cmdStr)
+	startCmd := exec.Command("docker", "exec", env.Container, "bash", "-c", cmdStr)
 	if err := startCmd.Run(); err != nil {
 		log.Printf("cloudflared start failed: %v", err)
 	}
 
-	// Wait a moment for cloudflared to print the URL
-	time.Sleep(2 * time.Second)
-
-	// Try to read the URL from the log file
-	catCmd := exec.Command("docker", "exec", env.Container, "cat", "/tmp/tunnel.log")
-	output, err := catCmd.Output()
+	// Poll for URL (max 10 seconds)
 	tunnelURL := ""
+	for i := 0; i < 20; i++ {
+		time.Sleep(500 * time.Millisecond)
+		catCmd := exec.Command("docker", "exec", env.Container, "cat", "/tmp/tunnel.log")
+		output, err := catCmd.Output()
+		if err != nil {
+			log.Printf("Debug: cat /tmp/tunnel.log failed: %v", err)
+			continue
+		}
 
-	if err == nil {
+		// Debug: print log content to console
+		if i % 4 == 0 {
+			log.Printf("Debug: Tunnel log poll %d: %s", i, string(output))
+		}
+
+		// Look for https://*.trycloudflare.com
 		lines := strings.Split(string(output), "\n")
 		for _, line := range lines {
-			if strings.Contains(line, "https://") && strings.Contains(line, "trycloudflare") {
-				// Extract URL from line like: "2024-01-15 10:30:00 https://abc123.trycloudflare.com"
-				parts := strings.Fields(line)
-				for _, part := range parts {
-					if strings.HasPrefix(part, "https://") {
-						tunnelURL = strings.TrimSpace(part)
+			if strings.Contains(line, "trycloudflare.com") {
+				// Find index of https://
+				idx := strings.Index(line, "https://")
+				if idx != -1 {
+					endIdx := strings.Index(line[idx:], " ")
+					if endIdx == -1 {
+						tunnelURL = strings.TrimSpace(line[idx:])
+					} else {
+						tunnelURL = strings.TrimSpace(line[idx : idx+endIdx])
+					}
+					// Clean up any trailing bars or characters
+					tunnelURL = strings.TrimRight(tunnelURL, " |")
+					if tunnelURL != "" {
 						break
 					}
 				}
-				if tunnelURL != "" {
-					break
-				}
 			}
+		}
+		if tunnelURL != "" {
+			break
 		}
 	}
 
 	// If we couldn't get the URL yet, tell user to check back
 	if tunnelURL == "" {
-		tunnelURL = "(cloudflared starting... check again in 10 seconds)"
+		tunnelURL = "(Cloudflared still starting... refresh in a few seconds)"
 	}
 
 	env.TunnelURL = tunnelURL

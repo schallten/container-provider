@@ -342,31 +342,60 @@ func handleExpose(w http.ResponseWriter, r *http.Request) {
 
 	env := val.(*Env)
 
-	// Start cloudflared inside container
-	cmd := exec.Command("docker", "exec", "-d", env.Container,
-		"cloudflared", "tunnel", "--no-autoupdate", "run",
-		"--url", fmt.Sprintf("http://localhost:%s", port))
+	// Start cloudflared in background and capture its output
+	// cloudflared prints the tunnel URL to stdout when it starts
+	cmdStr := fmt.Sprintf(`
+cloudflared tunnel --no-autoupdate run --url http://localhost:%s 2>&1 | tee /tmp/tunnel.log | grep -m1 "https://" &
+`, port)
 
-	if err := cmd.Start(); err != nil {
-		log.Printf("cloudflared failed: %v", err)
-		logEvent("tunnel_failed", env.ID, err.Error())
-		http.Error(w, "Failed to start tunnel", http.StatusInternalServerError)
-		return
+	startCmd := exec.Command("docker", "exec", "-d", env.Container, "bash", "-c", cmdStr)
+	if err := startCmd.Run(); err != nil {
+		log.Printf("cloudflared start failed: %v", err)
 	}
 
-	env.TunnelPID = cmd.Process.Pid
+	// Wait a moment for cloudflared to print the URL
+	time.Sleep(2 * time.Second)
 
-	// Generate tunnel URL (cloudflared will override with real one)
-	tunnelURL := fmt.Sprintf("https://tempdev-%s-%s.trycloudflare.com", id, port)
+	// Try to read the URL from the log file
+	catCmd := exec.Command("docker", "exec", env.Container, "cat", "/tmp/tunnel.log")
+	output, err := catCmd.Output()
+	tunnelURL := ""
+
+	if err == nil {
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "https://") && strings.Contains(line, "trycloudflare") {
+				// Extract URL from line like: "2024-01-15 10:30:00 https://abc123.trycloudflare.com"
+				parts := strings.Fields(line)
+				for _, part := range parts {
+					if strings.HasPrefix(part, "https://") {
+						tunnelURL = strings.TrimSpace(part)
+						break
+					}
+				}
+				if tunnelURL != "" {
+					break
+				}
+			}
+		}
+	}
+
+	// If we couldn't get the URL yet, tell user to check back
+	if tunnelURL == "" {
+		tunnelURL = "(cloudflared starting... check again in 10 seconds)"
+	}
+
 	env.TunnelURL = tunnelURL
 
 	logEvent("tunnel_created", env.ID, port)
-	log.Printf("🔗 Exposed port %s for env %s", port, id)
+	log.Printf("🔗 Exposed port %s for env %s: %s", port, id, tunnelURL)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"tunnel_url": tunnelURL,
-		"note":       "URL may take 5-10 seconds to become active",
+		"port":       port,
+		"note":       "Cloudflared generates a unique HTTPS URL. If not shown, wait 10-15 seconds and refresh.",
+		"how_to":     "Inside terminal, run: cloudflared tunnel --url http://localhost:PORT to see the URL",
 	})
 }
 

@@ -283,7 +283,10 @@
         <div id="tunnel-section">
           <span>Public:</span>
           <a id="tunnel-url" href="#" target="_blank">loading...</a>
-          <button onclick="copyTunnel(event)" class="secondary">Copy</button>
+          <div style="display: flex; gap: 4px;">
+            <button onclick="copyTunnel(event)" class="secondary">Copy</button>
+            <button onclick="unexposePort()" class="danger" style="padding: 4px 8px; font-size: 10px;">Stop</button>
+          </div>
         </div>
         <div id="controls">
           <button onclick="createEnv()">New</button>
@@ -556,6 +559,23 @@
         btn.textContent = 'Copied!';
         setTimeout(() => { btn.textContent = original; }, 2000);
       });
+    }
+
+    async function unexposePort() {
+      if (!currentEnvId) return;
+      if (!confirm('Stop the public tunnel?')) return;
+
+      try {
+        const response = await fetch(`/expose/${currentEnvId}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(await response.text());
+
+        document.getElementById('tunnel-section').style.display = 'none';
+        if (term) {
+          term.write('\r\n\x1b[33m🛑 Tunnel stopped\x1b[0m\r\n');
+        }
+      } catch (err) {
+        alert('Failed to stop tunnel:\n' + err.message);
+      }
     }
 
     // ========================================================================

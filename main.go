@@ -326,29 +326,15 @@ func handleShell(w http.ResponseWriter, r *http.Request) {
 // ============================================================================
 
 func handleExpose(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
-		return
-	}
-
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/expose/"), "/")
-	if len(parts) < 2 {
-		http.Error(w, "Invalid request: /expose/:id/:port", http.StatusBadRequest)
+	if len(parts) < 1 {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
 	id := parts[0]
-	port := parts[1]
-
 	if !sanitizeEnvID(id) {
 		http.Error(w, "Invalid env ID", http.StatusBadRequest)
-		return
-	}
-
-	// Validate port
-	portNum, err := strconv.Atoi(port)
-	if err != nil || portNum < 1 || portNum > 65535 {
-		http.Error(w, "Port must be between 1 and 65535", http.StatusBadRequest)
 		return
 	}
 
@@ -357,8 +343,34 @@ func handleExpose(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Environment not found", http.StatusNotFound)
 		return
 	}
-
 	env := val.(*Env)
+
+	if r.Method == "DELETE" {
+		// Kill cloudflared in container
+		exec.Command("docker", "exec", env.Container, "pkill", "cloudflared").Run()
+		env.TunnelURL = ""
+		log.Printf("🛑 Unexposed env %s", id)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if len(parts) < 2 {
+		http.Error(w, "Port required", http.StatusBadRequest)
+		return
+	}
+	port := parts[1]
+
+	// Validate port
+	portNum, err := strconv.Atoi(port)
+	if err != nil || portNum < 1 || portNum > 65535 {
+		http.Error(w, "Port must be between 1 and 65535", http.StatusBadRequest)
+		return
+	}
 
 	// Start cloudflared in background and capture its output
 	// cloudflared prints the tunnel URL to stderr/stdout

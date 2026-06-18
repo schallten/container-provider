@@ -1,4 +1,4 @@
-name: "Container Provider"
+name: "TempDev"
 description: "Lightweight temporary cloud development environments on demand."
 url: "https://schallten.github.io"
 baseurl: "/container-provider"

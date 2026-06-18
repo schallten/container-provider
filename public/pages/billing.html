@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing - TempDev</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <style>
+    .billing-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .billing-grid { grid-template-columns: 1fr; } }
+
+    .balance-card {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+      color: #fff;
+      border: none;
+      padding: 28px 24px;
+    }
+    .balance-card .label { font-size: 12px; opacity: 0.6; text-transform: uppercase; letter-spacing: 1px; }
+    .balance-card .amount { font-size: 42px; font-weight: 700; margin: 8px 0 4px; font-family: var(--font-mono); }
+    .balance-card .sub { font-size: 12px; opacity: 0.5; }
+
+    .topup-form .form-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .topup-form input, .topup-form select {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: var(--font-body);
+      font-size: 13px;
+      outline: none;
+      width: 100%;
+      background: #fff;
+    }
+    .topup-form input:focus { border-color: var(--blue); }
+    .topup-form label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .topup-form .form-group { flex: 1; }
+    .topup-presets {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .preset-btn {
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .preset-btn:hover, .preset-btn.active {
+      border-color: var(--blue);
+      background: var(--blue-light);
+      color: var(--blue);
+    }
+    .card-icons {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .card-icon {
+      width: 36px;
+      height: 24px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-muted);
+      background: #fafafa;
+    }
+
+    .pricing-table {
+      margin-top: 12px;
+    }
+    .pricing-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-light);
+      font-size: 13px;
+    }
+    .pricing-row:last-child { border-bottom: none; }
+    .pricing-row .action { color: var(--text-secondary); }
+    .pricing-row .cost { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
+
+    .success-msg {
+      display: none;
+      background: var(--green-bg);
+      color: var(--green);
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      margin-top: 10px;
+    }
+    .success-msg.show { display: block; }
+  </style>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+</head>
+<body>
+  <div id="topbar-root"></div>
+  <div id="sidebar-root"></div>
+
+  <main class="main">
+    <div class="page active">
+      <div class="page-header">
+        <div class="page-breadcrumb">
+          <a href="/pages/dashboard.html">Home</a>
+          <span class="sep">&#9656;</span>
+          <span>Billing</span>
+        </div>
+        <h1 class="page-title">Billing & Credits</h1>
+        <p class="page-desc">Manage your account balance and payment history</p>
+      </div>
+
+      <div class="billing-grid">
+        <!-- Left column -->
+        <div>
+          <!-- Balance -->
+          <div class="card balance-card" style="margin-bottom:16px;">
+            <div class="label">Available Credits</div>
+            <div class="amount" id="balance">--</div>
+            <div class="sub">Credits never expire</div>
+          </div>
+
+          <!-- Top-up -->
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-header">
+              <div class="card-title">Add Credits</div>
+            </div>
+            <div class="card-body topup-form">
+              <div class="topup-presets">
+                <button class="preset-btn active" onclick="setAmount(500, this)">500</button>
+                <button class="preset-btn" onclick="setAmount(1000, this)">1,000</button>
+                <button class="preset-btn" onclick="setAmount(2500, this)">2,500</button>
+                <button class="preset-btn" onclick="setAmount(5000, this)">5,000</button>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Amount (credits)</label>
+                  <input type="number" id="topup-amount" value="500" min="100" max="10000">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Card Number</label>
+                  <input type="text" id="card-number" placeholder="4242 4242 4242 4242" maxlength="19">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Expiry</label>
+                  <input type="text" id="card-expiry" placeholder="12/28" maxlength="5">
+                </div>
+                <div class="form-group">
+                  <label>CVV</label>
+                  <input type="text" id="card-cvv" placeholder="123" maxlength="4">
+                </div>
+              </div>
+              <button class="btn btn-primary" onclick="topup()" id="topup-btn" style="width:100%;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                Add Credits
+              </button>
+              <div class="success-msg" id="success-msg"></div>
+              <div class="card-icons">
+                <div class="card-icon">VISA</div>
+                <div class="card-icon">MC</div>
+                <div class="card-icon">AMEX</div>
+                <div class="card-icon">DISC</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pricing -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Pricing</div>
+            </div>
+            <div class="card-body">
+              <div class="pricing-table">
+                <div class="pricing-row">
+                  <span class="action">New environment</span>
+                  <span class="cost">5 credits</span>
+                </div>
+                <div class="pricing-row">
+                  <span class="action">Port tunnel</span>
+                  <span class="cost">2 credits</span>
+                </div>
+                <div class="pricing-row">
+                  <span class="action">Container runtime</span>
+                  <span class="cost">3 credits / min</span>
+                </div>
+                <div class="pricing-row">
+                  <span class="action">New account bonus</span>
+                  <span class="cost" style="color:var(--green);">+1,000 free</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right column -->
+        <div>
+          <!-- Transaction history -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Transaction History</div>
+              <button class="btn btn-ghost btn-sm" onclick="loadBilling()">Refresh</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Description</th>
+                    <th>Card</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody id="txn-body">
+                  <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:32px;">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/shell.js"></script>
+  <script src="/js/nav.js"></script>
+  <script src="/js/location.js"></script>
+  <script>
+    const DEMO_CARDS = [
+      '4242424242424242',
+      '4000056655665556',
+      '5555555555554444',
+      '378282246310005',
+      '6011111111111117',
+    ];
+
+    async function loadBilling() {
+      try {
+        const r = await fetch('/billing');
+        const d = await r.json();
+        document.getElementById('balance').textContent = d.balance.toLocaleString();
+
+        const txns = d.transactions || [];
+        if (txns.length === 0) {
+          document.getElementById('txn-body').innerHTML =
+            '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:32px;">No transactions yet</td></tr>';
+          return;
+        }
+
+        document.getElementById('txn-body').innerHTML = txns.map(t => {
+          const isCredit = t.amount > 0;
+          const badge = isCredit
+            ? '<span class="status-pill active" style="font-size:10px;"><span class="dot"></span>Credit</span>'
+            : '<span class="status-pill error" style="font-size:10px;"><span class="dot"></span>Debit</span>';
+          const card = t.card_last4 ? `****${t.card_last4}` : '-';
+          const date = new Date(t.created_at);
+          const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+          return `<tr>
+            <td>${badge}</td>
+            <td style="font-family:var(--font-mono);font-weight:600;color:${isCredit ? 'var(--green)' : 'var(--red)'};">${isCredit ? '+' : ''}${t.amount}</td>
+            <td style="font-size:12px;color:var(--text-secondary);">${t.description}</td>
+            <td class="mono" style="font-size:11px;">${card}</td>
+            <td style="font-size:12px;color:var(--text-muted);">${dateStr}</td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        console.error('Failed to load billing:', e);
+      }
+    }
+
+    function setAmount(amt, el) {
+      document.getElementById('topup-amount').value = amt;
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    async function topup() {
+      const amount = parseInt(document.getElementById('topup-amount').value);
+      const cardNum = document.getElementById('card-number').value.replace(/\s/g, '');
+      const expiry = document.getElementById('card-expiry').value;
+      const cvv = document.getElementById('card-cvv').value;
+
+      if (!cardNum || cardNum.length < 4) {
+        alert('Enter a card number');
+        return;
+      }
+      if (!expiry) {
+        alert('Enter expiry date');
+        return;
+      }
+      if (!cvv) {
+        alert('Enter CVV');
+        return;
+      }
+
+      // Fake validation — accept any card that starts with 4,5,6,3
+      const first = cardNum[0];
+      if (!['4','5','6','3'].includes(first)) {
+        alert('Invalid card. Use a Visa, Mastercard, Amex, or Discover.');
+        return;
+      }
+
+      const btn = document.getElementById('topup-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner spinner-sm"></span> Processing...';
+
+      try {
+        const r = await fetch('/billing/topup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount, card_number: cardNum, expiry, cvv })
+        });
+
+        const d = await r.json();
+        if (!r.ok) {
+          throw new Error(d.error || 'Payment failed');
+        }
+
+        document.getElementById('balance').textContent = d.balance.toLocaleString();
+        document.getElementById('success-msg').textContent = `Successfully added ${amount.toLocaleString()} credits (card ****${d.card_last4})`;
+        document.getElementById('success-msg').classList.add('show');
+
+        // Clear form
+        document.getElementById('card-number').value = '';
+        document.getElementById('card-expiry').value = '';
+        document.getElementById('card-cvv').value = '';
+
+        loadBilling();
+      } catch (err) {
+        alert('Payment failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Add Credits';
+      }
+    }
+
+    // Format card number with spaces
+    document.getElementById('card-number').addEventListener('input', function(e) {
+      let v = e.target.value.replace(/\s/g, '').replace(/\D/g, '');
+      v = v.match(/.{1,4}/g)?.join(' ') || v;
+      e.target.value = v;
+    });
+
+    // Format expiry
+    document.getElementById('card-expiry').addEventListener('input', function(e) {
+      let v = e.target.value.replace(/\D/g, '');
+      if (v.length >= 2) v = v.slice(0,2) + '/' + v.slice(2);
+      e.target.value = v;
+    });
+
+    loadBilling();
+  </script>
+</body>
+</html>

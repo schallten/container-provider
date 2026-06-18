@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TempDev - Compute</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/terminal.css">
+</head>
+<body>
+  <div id="topbar-root"></div>
+  <div id="sidebar-root"></div>
+
+  <main class="main">
+    <div class="page active">
+      <div class="page-header">
+        <div class="page-breadcrumb">
+          <a href="/pages/dashboard.html">Home</a>
+          <span class="sep">&#9656;</span>
+          <a href="#">Services</a>
+          <span class="sep">&#9656;</span>
+          <a href="/pages/compute.html">Compute</a>
+          <span class="sep">&#9656;</span>
+          <span>TempDev</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <h1 class="page-title">TempDev</h1>
+            <p class="page-desc">Temporary sandboxed dev environments</p>
+          </div>
+          <div class="btn-group" id="env-controls" style="display:none;">
+            <span class="status-pill active" id="status-pill"><span class="dot"></span> Running</span>
+            <span style="font-size:12px;color:var(--text-muted);margin:0 4px;">ID: <strong id="env-id" style="font-family:var(--font-mono);">-</strong></span>
+            <span style="font-size:12px;color:var(--text-muted);">Uptime: <strong id="uptime">0s</strong></span>
+            <span style="font-size:12px;color:var(--text-muted);">Idle: <strong id="idle">0s</strong></span>
+            <button onclick="promptExpose()" id="expose-btn" class="btn btn-ghost btn-sm" disabled>Expose Port</button>
+            <button onclick="downloadSSH()" id="ssh-btn" class="btn btn-ghost btn-sm" disabled title="Download SSH key">SSH</button>
+            <button onclick="destroyEnv()" id="destroy-btn" class="btn btn-danger btn-sm" disabled>Terminate</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SSH Info bar -->
+      <div id="ssh-bar" style="display:none;margin-bottom:12px;">
+        <div class="card" style="border-color:var(--blue);">
+          <div class="card-body" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;flex-wrap:wrap;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              <span style="font-size:12px;color:var(--text-secondary);">SSH:</span>
+              <code id="ssh-command" style="font-family:var(--font-mono);font-size:12px;background:var(--bg);padding:3px 8px;border-radius:2px;"></code>
+              <span style="font-size:11px;color:var(--text-muted);">After download run: <code style="font-family:var(--font-mono);background:var(--bg);padding:2px 6px;border-radius:2px;">chmod 600 tempdev-*.pem</code></span>
+            </div>
+            <button onclick="downloadSSH()" class="btn btn-primary btn-sm">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Key
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tags bar -->
+      <div id="tags-bar" style="display:none;margin-bottom:12px;">
+        <div class="card">
+          <div class="card-body" style="display:flex;align-items:center;gap:8px;padding:10px 16px;flex-wrap:wrap;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <span style="font-size:12px;color:var(--text-muted);margin-right:4px;">Tags:</span>
+            <div id="tags-display" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+            <button onclick="openTagEditor()" class="btn btn-ghost btn-sm" style="margin-left:4px;">+ Add</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag editor modal -->
+      <div class="settings-overlay" id="tag-editor-overlay" onclick="if(event.target===this)closeTagEditor()">
+        <div class="settings-panel" style="width:360px;">
+          <div class="settings-header">
+            <h3>Edit Tags</h3>
+            <button class="settings-close" onclick="closeTagEditor()">&times;</button>
+          </div>
+          <div class="settings-body">
+            <div id="tag-list" style="margin-bottom:12px;"></div>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="new-tag-key" placeholder="Key" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--font-body);">
+              <input type="text" id="new-tag-value" placeholder="Value" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--font-body);">
+              <button onclick="addTag()" class="btn btn-primary btn-sm">Add</button>
+            </div>
+            <button onclick="saveTags()" class="btn btn-primary" style="width:100%;margin-top:12px;">Save Tags</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tunnel bar (shown when exposed) -->
+      <div id="tunnel-bar" style="display:none;margin-bottom:12px;">
+        <div class="card" style="border-color:var(--green);">
+          <div class="card-body" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <span style="font-size:12px;color:var(--text-secondary);">Public URL:</span>
+              <a id="tunnel-url" href="#" target="_blank" style="font-family:var(--font-mono);font-size:12px;color:var(--blue);"></a>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button onclick="copyTunnel()" class="btn btn-ghost btn-sm" id="copy-btn">Copy</button>
+              <button onclick="unexposePort()" class="btn btn-danger btn-sm">Stop</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal -->
+      <div class="card terminal-card" id="terminal-card">
+        <div class="card-header" id="card-header-landing">
+          <div class="card-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Shell
+          </div>
+          <button onclick="createEnv()" id="launch-btn" class="btn btn-primary btn-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Launch
+          </button>
+        </div>
+        <div class="card-header" id="card-header-active" style="display:none;">
+          <div class="card-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Shell
+          </div>
+          <div class="card-meta">bash &mdash; connected</div>
+        </div>
+
+        <div class="terminal-bar">
+          <div class="terminal-dots"><span></span><span></span><span></span></div>
+          <span class="terminal-tab active">bash</span>
+        </div>
+        <div id="terminal-container">
+          <div class="landing" id="landing">
+            <div class="landing-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            </div>
+            <h2>TempDev</h2>
+            <p>Temporary cloud dev environments. Launch a sandboxed container, code in the browser, expose ports instantly.</p>
+            <div class="feature-grid">
+              <div class="feature-item">
+                <span class="fi-icon">&#9881;</span>
+                <div class="fi-label">Containerized</div>
+                <div class="fi-desc">Isolated envs</div>
+              </div>
+              <div class="feature-item">
+                <span class="fi-icon">&#9889;</span>
+                <div class="fi-label">Instant</div>
+                <div class="fi-desc">Ready in seconds</div>
+              </div>
+              <div class="feature-item">
+                <span class="fi-icon">&#127760;</span>
+                <div class="fi-label">Shareable</div>
+                <div class="fi-desc">Public tunnels</div>
+              </div>
+            </div>
+            <button onclick="createEnv()" class="btn btn-primary" style="margin-top:4px;padding:8px 20px;font-size:14px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Launch Environment
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- xterm.js -->
+  <link rel="stylesheet" href="https://unpkg.com/xterm@5.1.0/css/xterm.css" />
+  <script src="https://unpkg.com/xterm@5.1.0/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.js"></script>
+
+  <script src="/js/shell.js"></script>
+  <script src="/js/nav.js"></script>
+  <script src="/js/location.js"></script>
+
+  <script>
+    let term = null;
+    let ws = null;
+    let currentEnvId = null;
+    let createdAt = null;
+    let lastActivityTime = null;
+
+    const Terminal = window.Terminal;
+    const FitAddon = window.FitAddon.FitAddon;
+
+    // ======================== CREATE ========================
+
+    async function createEnv() {
+      try {
+        const btn = document.getElementById('launch-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner spinner-sm"></span> Launching...';
+
+        const r = await fetch('/env', { method: 'POST' });
+        if (!r.ok) throw new Error(await r.text());
+
+        const data = await r.json();
+        currentEnvId = data.id;
+        createdAt = new Date();
+        lastActivityTime = new Date();
+
+        document.getElementById('card-header-landing').style.display = 'none';
+        document.getElementById('card-header-active').style.display = 'flex';
+        document.getElementById('env-controls').style.display = 'flex';
+        document.getElementById('tags-bar').style.display = 'block';
+        document.getElementById('ssh-bar').style.display = 'block';
+        document.getElementById('env-id').textContent = currentEnvId;
+        document.getElementById('tunnel-bar').style.display = 'none';
+        document.getElementById('status-pill').className = 'status-pill active';
+
+        const landing = document.getElementById('landing');
+        if (landing) landing.remove();
+
+        if (!term) initTerminal();
+        else term.clear();
+
+        connectShell();
+        startTimers();
+        loadTags();
+        loadSettings(currentEnvId);
+
+        document.getElementById('expose-btn').disabled = false;
+        document.getElementById('ssh-btn').disabled = false;
+        document.getElementById('destroy-btn').disabled = false;
+        document.getElementById('idle-toggle').checked = false;
+        updateSSHCommand();
+
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Launch';
+      } catch (err) {
+        alert('Failed to create environment:\n' + err.message);
+        const btn = document.getElementById('launch-btn');
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Launch';
+      }
+    }
+
+    // ======================== TERMINAL ========================
+
+    function initTerminal() {
+      term = new Terminal({
+        theme: {
+          background: '#0d0d1a',
+          foreground: '#c9d1d9',
+          cursor: '#ff9900',
+          cursorAccent: '#0d0d1a',
+          selection: 'rgba(255,153,0,0.2)',
+          black: '#484f58', red: '#f85149', green: '#3fb950',
+          yellow: '#ff9900', blue: '#58a6ff', magenta: '#bc8ef9',
+          cyan: '#79c0ff', white: '#b1bac4',
+        },
+        fontSize: 13,
+        fontFamily: "'IBM Plex Mono', monospace",
+        scrollback: 5000,
+        tabStopWidth: 4,
+        cursorBlink: true,
+      });
+
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(document.getElementById('terminal-container'));
+      try { fitAddon.fit(); } catch(e) {}
+      window.addEventListener('resize', () => { try { fitAddon.fit(); } catch(e) {} });
+      term.focus();
+    }
+
+    function connectShell() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/ws/env/${currentEnvId}`);
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        term.focus();
+        term.write('\x1b[38;2;255;153;0m\u2714 Connected\x1b[0m\r\n');
+        ws.send(JSON.stringify({ cols: term.cols, rows: term.rows }));
+      };
+
+      ws.onmessage = (e) => {
+        if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data));
+        else term.write(e.data);
+        lastActivityTime = new Date();
+      };
+
+      ws.onerror = () => {
+        term.write('\r\n\x1b[31m\u2718 Connection error\x1b[0m\r\n');
+        document.getElementById('status-pill').className = 'status-pill error';
+      };
+
+      ws.onclose = () => {
+        term.write('\r\n\x1b[33m\u26a0 Session ended\x1b[0m\r\n');
+        document.getElementById('status-pill').className = 'status-pill error';
+      };
+
+      term.onData((d) => {
+        if (ws && ws.readyState === WebSocket.OPEN) { ws.send(d); lastActivityTime = new Date(); }
+      });
+
+      term.onResize((s) => {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ cols: s.cols, rows: s.rows }));
+      });
+    }
+
+    // ======================== EXPOSE ========================
+
+    function promptExpose() {
+      const port = prompt('Port to expose (e.g., 3000, 8000):', '3000');
+      if (port) exposePort(port);
+    }
+
+    async function exposePort(port) {
+      if (!currentEnvId) return;
+      try {
+        document.getElementById('expose-btn').disabled = true;
+        const r = await fetch(`/expose/${currentEnvId}/${port}`, { method: 'POST' });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+
+        document.getElementById('tunnel-url').href = d.tunnel_url;
+        document.getElementById('tunnel-url').textContent = d.tunnel_url.replace('https://', '');
+        document.getElementById('tunnel-bar').style.display = 'block';
+
+        term.write(`\r\n\x1b[38;2;255;153;0m\u2714 Port ${port} exposed\x1b[0m\r\n`);
+        term.write(`\x1b[36m  ${d.tunnel_url}\x1b[0m\r\n`);
+        document.getElementById('expose-btn').disabled = false;
+      } catch (err) {
+        alert('Failed to expose port:\n' + err.message);
+        document.getElementById('expose-btn').disabled = false;
+      }
+    }
+
+    function copyTunnel() {
+      const url = document.getElementById('tunnel-url').href;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      });
+    }
+
+    async function unexposePort() {
+      if (!currentEnvId || !confirm('Stop public tunnel?')) return;
+      try {
+        const r = await fetch(`/expose/${currentEnvId}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error(await r.text());
+        document.getElementById('tunnel-bar').style.display = 'none';
+        term.write('\r\n\x1b[33m\u23f9 Tunnel stopped\x1b[0m\r\n');
+      } catch (err) { alert('Failed: ' + err.message); }
+    }
+
+    // ======================== SSH ========================
+
+    let sshPort = 0;
+
+    async function updateSSHCommand() {
+      if (!currentEnvId) return;
+      try {
+        const r = await fetch(`/envs`);
+        const envs = await r.json();
+        const env = envs.find(e => e.id === currentEnvId);
+        if (env && env.ssh_port) {
+          sshPort = env.ssh_port;
+          document.getElementById('ssh-command').textContent = `ssh dev@localhost -p ${sshPort} -i tempdev-${currentEnvId}.pem`;
+        }
+      } catch (e) {}
+    }
+
+    function downloadSSH() {
+      if (!currentEnvId) return;
+      window.location.href = `/ssh/${currentEnvId}`;
+    }
+
+    // ======================== DESTROY ========================
+
+    async function destroyEnv() {
+      if (!currentEnvId || !confirm('Terminate this environment?')) return;
+      try {
+        document.getElementById('destroy-btn').disabled = true;
+        const r = await fetch(`/env/${currentEnvId}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error(await r.text());
+        if (ws) ws.close();
+        currentEnvId = null; createdAt = null; lastActivityTime = null;
+
+        document.getElementById('card-header-active').style.display = 'none';
+        document.getElementById('card-header-landing').style.display = 'flex';
+        document.getElementById('env-controls').style.display = 'none';
+        document.getElementById('tunnel-bar').style.display = 'none';
+        document.getElementById('tags-bar').style.display = 'none';
+        document.getElementById('ssh-bar').style.display = 'none';
+
+        const c = document.getElementById('terminal-container');
+        if (term) { term.dispose(); term = null; }
+        c.innerHTML = `
+          <div class="landing" id="landing">
+            <div class="landing-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            </div>
+            <h2>TempDev</h2>
+            <p>Temporary cloud dev environments. Launch a sandboxed container, code in the browser, expose ports instantly.</p>
+            <div class="feature-grid">
+              <div class="feature-item"><span class="fi-icon">&#9881;</span><div class="fi-label">Containerized</div><div class="fi-desc">Isolated envs</div></div>
+              <div class="feature-item"><span class="fi-icon">&#9889;</span><div class="fi-label">Instant</div><div class="fi-desc">Ready in seconds</div></div>
+              <div class="feature-item"><span class="fi-icon">&#127760;</span><div class="fi-label">Shareable</div><div class="fi-desc">Public tunnels</div></div>
+            </div>
+            <button onclick="createEnv()" class="btn btn-primary" style="margin-top:4px;padding:8px 20px;font-size:14px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Launch Environment
+            </button>
+          </div>`;
+        document.getElementById('expose-btn').disabled = true;
+        document.getElementById('destroy-btn').disabled = true;
+      } catch (err) {
+        alert('Failed: ' + err.message);
+        document.getElementById('destroy-btn').disabled = false;
+      }
+    }
+
+    // ======================== TIMERS ========================
+
+    let uptimeInterval = null;
+    let idleInterval = null;
+
+    function startTimers() {
+      if (uptimeInterval) clearInterval(uptimeInterval);
+      if (idleInterval) clearInterval(idleInterval);
+
+      uptimeInterval = setInterval(() => {
+        if (!createdAt) return;
+        document.getElementById('uptime').textContent = fmt((Date.now() - createdAt) / 1000);
+      }, 1000);
+
+      idleInterval = setInterval(() => {
+        if (!lastActivityTime) return;
+        const s = (Date.now() - lastActivityTime) / 1000;
+        const el = document.getElementById('idle');
+        el.textContent = fmt(s);
+        if (s > 600) el.style.color = 'var(--red)';
+        else if (s > 300) el.style.color = 'var(--yellow)';
+        else el.style.color = '';
+      }, 1000);
+    }
+
+    function fmt(s) {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.floor(s % 60);
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${sec}s`;
+      return `${sec}s`;
+    }
+
+    // ======================== TAGS ========================
+
+    let currentTags = {};
+
+    async function loadTags() {
+      if (!currentEnvId) return;
+      try {
+        const r = await fetch(`/tags/${currentEnvId}`);
+        currentTags = await r.json();
+        renderTags();
+      } catch (e) {}
+    }
+
+    function renderTags() {
+      const el = document.getElementById('tags-display');
+      const entries = Object.entries(currentTags);
+      if (entries.length === 0) {
+        el.innerHTML = '<span style="font-size:11px;color:var(--text-muted);font-style:italic;">No tags</span>';
+        return;
+      }
+      el.innerHTML = entries.map(([k, v]) => `
+        <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:var(--blue-light);border-radius:2px;font-size:11px;font-family:var(--font-mono);">
+          <span style="color:var(--blue);font-weight:600;">${k}</span>
+          <span style="color:var(--text-muted);">=</span>
+          <span>${v}</span>
+        </span>
+      `).join('');
+    }
+
+    function openTagEditor() {
+      renderTagList();
+      document.getElementById('tag-editor-overlay').classList.add('open');
+    }
+
+    function closeTagEditor() {
+      document.getElementById('tag-editor-overlay').classList.remove('open');
+    }
+
+    function renderTagList() {
+      const el = document.getElementById('tag-list');
+      const entries = Object.entries(currentTags);
+      if (entries.length === 0) {
+        el.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:8px;">No tags yet</div>';
+        return;
+      }
+      el.innerHTML = entries.map(([k, v]) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-light);">
+          <span style="font-family:var(--font-mono);font-size:12px;"><strong style="color:var(--blue);">${k}</strong> = ${v}</span>
+          <button onclick="removeTag('${k}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px;">&times;</button>
+        </div>
+      `).join('');
+    }
+
+    function addTag() {
+      const key = document.getElementById('new-tag-key').value.trim();
+      const val = document.getElementById('new-tag-value').value.trim();
+      if (!key) return;
+      currentTags[key] = val;
+      document.getElementById('new-tag-key').value = '';
+      document.getElementById('new-tag-value').value = '';
+      renderTagList();
+    }
+
+    function removeTag(key) {
+      delete currentTags[key];
+      renderTagList();
+    }
+
+    async function saveTags() {
+      if (!currentEnvId) return;
+      try {
+        await fetch(`/tags/${currentEnvId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentTags)
+        });
+        renderTags();
+        closeTagEditor();
+      } catch (e) {
+        alert('Failed to save tags');
+      }
+    }
+
+    // ======================== SETTINGS ========================
+
+    async function toggleSetting(action, enabled) {
+      if (!currentEnvId) return;
+      try {
+        await fetch(`/settings/${currentEnvId}/${action}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled })
+        });
+      } catch (e) { alert('Failed to update setting'); }
+    }
+
+    async function toggleIdleTimeout(enabled) {
+      if (!currentEnvId) return;
+      try {
+        await fetch(`/settings/${currentEnvId}/no-idle-timeout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled })
+        });
+      } catch (e) { alert('Failed to update setting'); }
+    }
+
+    // Check URL for ?env= param — resume existing session
+    const params = new URLSearchParams(window.location.search);
+    const resumeId = params.get('env');
+    if (resumeId) {
+      currentEnvId = resumeId;
+      createdAt = new Date();
+      lastActivityTime = new Date();
+
+      document.getElementById('card-header-landing').style.display = 'none';
+      document.getElementById('card-header-active').style.display = 'flex';
+      document.getElementById('env-controls').style.display = 'flex';
+      document.getElementById('tags-bar').style.display = 'block';
+      document.getElementById('ssh-bar').style.display = 'block';
+      document.getElementById('env-id').textContent = currentEnvId;
+
+      const landing = document.getElementById('landing');
+      if (landing) landing.remove();
+
+      initTerminal();
+      connectShell();
+      startTimers();
+      loadTags();
+      loadSettings(currentEnvId);
+
+      document.getElementById('expose-btn').disabled = false;
+      document.getElementById('ssh-btn').disabled = false;
+      document.getElementById('destroy-btn').disabled = false;
+      updateSSHCommand();
+    }
+  </script>
+</body>
+</html>

@@ -1,136 +1,112 @@
-# Container Provider
-
-![Container Ship](https://i.pinimg.com/1200x/79/fa/10/79fa10d0c3f47fa15351ab187b937e98.jpg)
+# TempDev
 
 Lightweight temporary cloud development environments on demand.
 
-No signup. No authentication. Create isolated Linux shells in seconds. Share temporary public URLs. Everything self-destructs in 15 minutes.
+No signup. No authentication. Create isolated Linux shells in seconds. Share temporary public URLs. SSH from your device. Everything self-destructs when idle or out of credits.
 
 ---
 
 ## Features
 
-* **Instant Isolated Environments**
-  * Click "New" to get a full Linux shell in less than 3 seconds.
-  * 512MB RAM, 0.5 CPU per environment.
-  * Automatic cleanup after 15 minutes idle or 12 hours maximum lifetime.
-
-* **Public URLs via Cloudflare Tunnel**
-  * Expose any port inside your environment.
-  * Get a public HTTPS URL instantly.
-  * Share with anyone, anywhere.
-  * Stop active tunnels dynamically via the UI or API.
-
-* **Browser Terminal**
-  * Full xterm.js integration with FitAddon.
-  * Real terminal emulation (not a fake console) with window resize synchronization.
-  * Keyboard shortcuts, paste, and copy support.
-
-* **Secure Isolation**
-  * Docker containers with dropped capabilities (`--cap-drop=ALL`).
-  * Non-root user execution (`-u dev`).
-  * No host filesystem access.
-  * Rate limited to 5 environments per hour per IP.
-
-* **Minimal Overhead**
-  * About 120MB memory per idle environment.
-  * No database (in-memory state).
-  * No external dependencies.
-  * Runs on AWS free tier t3.micro.
+* **Console Dashboard** — AWS-style multi-page UI with sidebar navigation, stats, and env management
+* **Instant Isolated Environments** — Click Launch to get a full Linux shell in seconds (512MB RAM, 0.5 CPU)
+* **Browser Terminal** — Real xterm.js terminal with resize support, not a fake console
+* **SSH Access** — Download an SSH key and connect from your own terminal
+* **Public URLs via Cloudflare Tunnel** — Expose any port, get a public HTTPS URL instantly
+* **Env Tagging** — Tag environments with key/value pairs (project, env, team, etc.)
+* **Billing System** — Credit-based system with fake payment gateway, per-minute billing, and cost explorer
+* **Event Logging** — Full audit trail of all actions with searchable log viewer
+* **Settings** — Per-env idle timeout and max lifetime bypass toggles
+* **Orphan Cleanup** — SQLite-backed state survives server restarts, cleans up dead containers on boot
 
 ---
 
 ## Architecture
 
 ```
-Browser (xterm.js)
+Browser (xterm.js / console UI)
        ↓
    HTTPS/WSS
        ↓
-┌─────────────────────┐
-│   Go Backend        │
-│  • Environment mgr  │
-│  • WS proxy         │
-│  • Cleanup loop     │
-│  • Tunnel provisioner│
-│  • Abuse detection  │
-└────────────┬────────┘
+┌──────────────────────────┐
+│   Go Backend            │
+│  • Environment mgr      │
+│  • WS shell proxy       │
+│  • Billing engine       │
+│  • SSH key generation   │
+│  • Cleanup loop         │
+│  • Abuse detection      │
+│  • Event logging        │
+├──────────────────────────┤
+│  SQLite (tempdev.db)    │
+│  SQLite (billing.db)    │
+└────────────┬────────────┘
              ↓
       Docker Containers
       (512MB, 0.5CPU)
       • Python 3
-      • Node.js
-      • Go toolchain
-      • Git
-      • Interactive Bash (via Go PTY proxy)
+      • Git, curl, wget
+      • SSH server (port 2222)
       • cloudflared (tunneling)
+      • Interactive Bash (via Go PTY)
 ```
 
 ---
 
 ## Quick Start
 
-For detailed step-by-step local setup and cloud deployment instructions, see [quickstart.md](quickstart.md).
-
-### Local Run
 ```bash
-# Clone the repository
-git clone https://github.com/schallten/container-provider.git && cd container-provider
+# Clone
+git clone <repo-url> && cd container-provider
 
-# Build docker sandbox image & run application
+# Build Docker image
 docker build -t tempdev:latest .
-go mod download
-go run main.go
+
+# Build and run
+go build -o tempdev main.go db.go billing_db.go
+./tempdev
 
 # Open http://localhost:8080
 ```
 
----
-
-## Technical Documentation & API Reference
-
-Detailed specifications of endpoints, security mechanisms, PTY window resizing WebSocket sub-protocol, monitoring logs, and troubleshooting steps have been moved to:
-
-👉 **[documentation.md](documentation.md)**
-
-For step-by-step instructions on exposing the provider or sandbox environments publicly using Cloudflare tunnels, ngrok, or reverse proxies, see:
-
-👉 **[expose_guide.md](expose_guide.md)**
+New accounts start with **1,000 free credits**.
 
 ---
 
 ## Included Tools
 
 Every sandbox environment comes pre-installed with:
-* **Languages**: Python 3 (with pip/venv), Node.js (with npm), Go toolchain.
-* **CLI Tools**: Git, curl, wget, htop, tmux, tree, ssh-client.
-* **Editors**: Vim, Nano.
-* **Tunneling**: cloudflared.
+* **Languages**: Python 3 (with pip/venv)
+* **CLI Tools**: Git, curl, wget, htop, tmux, tree
+* **Editors**: Vim, Nano
+* **Tunneling**: cloudflared
+* **SSH**: OpenSSH server (port 2222)
 
 ---
 
-## Security Highlights
+## Billing
 
-Container Provider runs hardened sandboxes to prevent host compromise and resource abuse:
-* **Isolation**: Containers run with `--cap-drop=ALL` (no capabilities), `--security-opt=no-new-privileges`, and under a non-root `dev` user.
-* **Limits**: Tight boundaries are enforced per sandbox (512MB memory, 0.5 CPU cores, max 64 processes).
-* **Abuse Scan**: Host background daemon actively kills containers spawning unauthorized network scanner or cryptocurrency mining binaries (e.g. `xmrig`, `nmap`).
-* **Metadata Protection**: The cloud metadata endpoint (`169.254.169.254`) is mapped to an invalid loopback address within the container to block access.
+| Action | Cost |
+|--------|------|
+| New environment | 5 credits |
+| Port tunnel | 2 credits |
+| Container runtime | 3 credits / min |
+| New account | +1,000 free |
 
-See [documentation.md](documentation.md#security-model) for a comprehensive deep dive.
+Payments are processed through a fake gateway (~25% random bank decline rate for realism).
 
 ---
 
-## Costs
+## Pages
 
-| Component | Cost |
-|-----------|------|
-| t3.micro (1 year free) | $0-10/month |
-| 30GB EBS storage | ~$3/month |
-| Data transfer | Free tier |
-| Domain / Tunnel | Free |
-| **Total** | ~$3/month |
-
+| Page | Description |
+|------|-------------|
+| `/pages/dashboard.html` | Overview with active envs, stats, kill buttons |
+| `/pages/compute.html` | Compute services listing |
+| `/pages/tempdev.html` | Terminal, SSH, tags, tunnels, settings |
+| `/pages/billing.html` | Credits, top-up, transaction history |
+| `/pages/logs.html` | Searchable event log viewer |
+| `/pages/costs.html` | Spending charts and breakdowns |
 
 ---
 

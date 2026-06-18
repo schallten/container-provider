@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - TempDev</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+  <div id="topbar-root"></div>
+  <div id="sidebar-root"></div>
+
+  <main class="main">
+    <div class="page active">
+      <div class="page-header">
+        <div class="page-breadcrumb">
+          <a href="/pages/dashboard.html">Home</a>
+          <span class="sep">&#9656;</span>
+          <span>Dashboard</span>
+        </div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-desc">Overview of your TempDev environment</p>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="label">Active Environments</div>
+          <div class="value green" id="stat-active">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Created</div>
+          <div class="value" id="stat-total">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Containers Running</div>
+          <div class="value orange" id="stat-containers">0</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Active Environments</div>
+          <a href="/pages/tempdev.html" class="btn btn-primary btn-sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Launch New
+          </a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Tags</th>
+                <th>Tunnel</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="env-table-body">
+              <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px;">No active environments</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/shell.js"></script>
+  <script src="/js/nav.js"></script>
+  <script src="/js/location.js"></script>
+  <script>
+    async function loadEnvs() {
+      try {
+        const r = await fetch('/envs');
+        const data = await r.json();
+        const envs = Array.isArray(data) ? data : [];
+        document.getElementById('stat-active').textContent = envs.length;
+        document.getElementById('stat-total').textContent = envs.length;
+
+        const dockerR = await fetch('http://localhost:8080/docker-count').catch(() => null);
+        // Just show active count for containers
+        document.getElementById('stat-containers').textContent = envs.length;
+
+        if (envs.length === 0) {
+          document.getElementById('env-table-body').innerHTML =
+            '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px;">No active environments. <a href="/pages/tempdev.html" style="color:var(--blue);">Launch one</a></td></tr>';
+          return;
+        }
+
+        document.getElementById('env-table-body').innerHTML = envs.map(e => {
+          const created = new Date(e.created_at);
+          const age = formatDuration((Date.now() - created.getTime()) / 1000);
+          const tunnel = e.tunnel_url && e.tunnel_url !== '' ?
+            `<a href="${e.tunnel_url}" target="_blank" style="color:var(--blue);font-family:var(--font-mono);font-size:11px;">${e.tunnel_url.replace('https://','')}</a>` :
+            '<span style="color:var(--text-muted);">-</span>';
+          const tags = e.tags || {};
+          const tagHtml = Object.entries(tags).map(([k,v]) =>
+            `<span style="display:inline-block;padding:1px 5px;background:var(--blue-light);border-radius:2px;font-size:10px;font-family:var(--font-mono);color:var(--blue);margin:1px;">${k}=${v}</span>`
+          ).join('') || '<span style="color:var(--text-muted);">-</span>';
+          return `<tr id="row-${e.id}">
+            <td class="mono">${e.id}</td>
+            <td><span class="status-pill active"><span class="dot"></span>Running</span></td>
+            <td>${age} ago</td>
+            <td>${tagHtml}</td>
+            <td>${tunnel}</td>
+            <td style="white-space:nowrap;">
+              <a href="/pages/tempdev.html?env=${e.id}" class="btn btn-ghost btn-sm">Open</a>
+              <button onclick="killEnv('${e.id}')" class="btn btn-danger btn-sm">Kill</button>
+            </td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        console.error('Failed to load envs:', e);
+      }
+    }
+
+    function formatDuration(s) {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.floor(s % 60);
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${sec}s`;
+      return `${sec}s`;
+    }
+
+    async function killEnv(id) {
+      if (!confirm(`Terminate environment ${id}?`)) return;
+      try {
+        const r = await fetch(`/env/${id}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error(await r.text());
+        const row = document.getElementById(`row-${id}`);
+        if (row) row.remove();
+        const count = document.querySelectorAll('#env-table-body tr').length;
+        if (count === 0) {
+          document.getElementById('env-table-body').innerHTML =
+            '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px;">No active environments. <a href="/pages/tempdev.html" style="color:var(--blue);">Launch one</a></td></tr>';
+        }
+        document.getElementById('stat-active').textContent = count === 0 ? 0 : count;
+      } catch (err) {
+        alert('Failed to terminate: ' + err.message);
+      }
+    }
+
+    loadEnvs();
+    setInterval(loadEnvs, 10000);
+  </script>
+</body>
+</html>

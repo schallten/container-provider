@@ -1,0 +1,128 @@
+/* ====================== TERMINAL ====================== */
+.terminal-card {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--topbar-h) - 130px);
+  min-height: 400px;
+}
+
+.terminal-card .card-header {
+  flex-shrink: 0;
+}
+
+.terminal-card .card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: #1a1a2e;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.terminal-dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.terminal-dots span:nth-child(1) { background: #ff5f56; }
+.terminal-dots span:nth-child(2) { background: #ffbd2e; }
+.terminal-dots span:nth-child(3) { background: #27c93f; }
+
+.terminal-tab {
+  margin-left: 16px;
+  background: #16162a;
+  padding: 3px 12px;
+  border-radius: 4px 4px 0 0;
+  font-size: 11px;
+  color: #8888aa;
+  font-family: var(--font-mono);
+}
+
+.terminal-tab.active { color: #fff; background: #0d0d1a; }
+
+#terminal-container {
+  background: #0d0d1a;
+  flex: 1;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.xterm { height: 100%; width: 100%; }
+
+/* ====================== LANDING INSIDE TERMINAL ====================== */
+.landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  padding: 20px;
+}
+
+.landing-icon {
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(35,47,62,0.3);
+  color: var(--orange);
+}
+
+.landing h2 { font-size: 18px; font-weight: 700; color: #fff; }
+
+.landing p {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+  text-align: center;
+  max-width: 340px;
+  line-height: 1.5;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 460px;
+}
+
+.feature-item {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius);
+  padding: 12px 10px;
+  text-align: center;
+}
+
+.feature-item .fi-icon { font-size: 18px; margin-bottom: 4px; display: block; }
+.feature-item .fi-label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.8); }
+.feature-item .fi-desc { font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 2px; }
+
+/* ====================== SPINNER ====================== */
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--border);
+  border-top-color: var(--orange);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.spinner-sm { width: 12px; height: 12px; border-width: 2px; }

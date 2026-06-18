@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compute - TempDev</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+</head>
+<body>
+  <div id="topbar-root"></div>
+  <div id="sidebar-root"></div>
+
+  <main class="main">
+    <div class="page active">
+      <div class="page-header">
+        <div class="page-breadcrumb">
+          <a href="/pages/dashboard.html">Home</a>
+          <span class="sep">&#9656;</span>
+          <a href="#">Services</a>
+          <span class="sep">&#9656;</span>
+          <span>Compute</span>
+        </div>
+        <h1 class="page-title">Compute</h1>
+        <p class="page-desc">Manage compute resources and containerized environments</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Compute Services</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Description</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight:600;">TempDev</td>
+                <td><span class="status-pill active"><span class="dot"></span>Available</span></td>
+                <td style="color:var(--text-secondary);">Temporary sandboxed dev environments with browser terminal</td>
+                <td><a href="/pages/tempdev.html" class="btn btn-primary btn-sm">Open</a></td>
+              </tr>
+              <tr style="opacity:0.4;">
+                <td style="font-weight:600;">Functions</td>
+                <td><span class="status-pill warning"><span class="dot"></span>Coming Soon</span></td>
+                <td style="color:var(--text-secondary);">Serverless function execution</td>
+                <td><button class="btn btn-ghost btn-sm" disabled>Open</button></td>
+              </tr>
+              <tr style="opacity:0.4;">
+                <td style="font-weight:600;">Containers</td>
+                <td><span class="status-pill warning"><span class="dot"></span>Coming Soon</span></td>
+                <td style="color:var(--text-secondary);">Persistent long-running containers</td>
+                <td><button class="btn btn-ghost btn-sm" disabled>Open</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/shell.js"></script>
+  <script src="/js/nav.js"></script>
+  <script src="/js/location.js"></script>
+</body>
+</html>

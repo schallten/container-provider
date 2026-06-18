@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cost Explorer - TempDev</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/variables.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .cost-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .period-btns { display: flex; gap: 4px; }
+    .period-btn {
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+      font-size: 12px;
+      font-family: var(--font-body);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .period-btn:hover { background: #f5f5f5; }
+    .period-btn.active { border-color: var(--blue); background: var(--blue-light); color: var(--blue); font-weight: 600; }
+    .chart-container {
+      position: relative;
+      height: 280px;
+      padding: 16px;
+    }
+    .cost-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .cost-summary .stat-card { text-align: center; }
+    .cost-summary .value { font-size: 20px; }
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 800px) { .breakdown-grid { grid-template-columns: 1fr; } .cost-summary { grid-template-columns: 1fr; } }
+    .breakdown-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-light);
+      font-size: 13px;
+    }
+    .breakdown-item:last-child { border-bottom: none; }
+    .breakdown-item .env-id { font-family: var(--font-mono); font-size: 12px; color: var(--blue); }
+    .breakdown-item .action { color: var(--text-secondary); }
+    .breakdown-item .credits { font-family: var(--font-mono); font-weight: 600; }
+    .empty-msg { text-align: center; color: var(--text-muted); padding: 40px; font-size: 13px; }
+  </style>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+</head>
+<body>
+  <div id="topbar-root"></div>
+  <div id="sidebar-root"></div>
+
+  <main class="main">
+    <div class="page active">
+      <div class="page-header">
+        <div class="page-breadcrumb">
+          <a href="/pages/dashboard.html">Home</a>
+          <span class="sep">&#9656;</span>
+          <span>Cost Explorer</span>
+        </div>
+        <h1 class="page-title">Cost Explorer</h1>
+        <p class="page-desc">Track credit spending across environments and services</p>
+      </div>
+
+      <div class="cost-header-row">
+        <div class="period-btns">
+          <button class="period-btn active" onclick="setPeriod(7, this)">7 days</button>
+          <button class="period-btn" onclick="setPeriod(14, this)">14 days</button>
+          <button class="period-btn" onclick="setPeriod(30, this)">30 days</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadCosts()">Refresh</button>
+      </div>
+
+      <div class="cost-summary">
+        <div class="stat-card">
+          <div class="label">Total Spent</div>
+          <div class="value" id="total-spent">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Daily Average</div>
+          <div class="value" id="daily-avg">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Peak Day</div>
+          <div class="value" id="peak-day">--</div>
+        </div>
+      </div>
+
+      <div class="breakdown-grid">
+        <!-- Spending chart -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Spending Over Time</div>
+          </div>
+          <div class="chart-container">
+            <canvas id="spending-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- By environment -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Spending by Environment</div>
+          </div>
+          <div class="card-body" id="env-breakdown">
+            <div class="empty-msg">No spending data yet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- By action type -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header">
+          <div class="card-title">Spending by Service</div>
+        </div>
+        <div class="card-body" id="action-breakdown">
+          <div class="empty-msg">No spending data yet</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/shell.js"></script>
+  <script src="/js/nav.js"></script>
+  <script src="/js/location.js"></script>
+  <script>
+    let chart = null;
+    let currentDays = 7;
+
+    async function loadCosts() {
+      try {
+        const r = await fetch(`/billing/costs?days=${currentDays}`);
+        const data = await r.json();
+
+        // Summary
+        const byDay = data.by_day || [];
+        const byEnv = data.by_env || [];
+
+        let total = 0;
+        let peak = 0;
+        byDay.forEach(d => { total += d.credits; if (d.credits > peak) peak = d.credits; });
+
+        document.getElementById('total-spent').textContent = total.toLocaleString();
+        document.getElementById('daily-avg').textContent = byDay.length > 0 ? Math.round(total / byDay.length).toLocaleString() : '0';
+        document.getElementById('peak-day').textContent = peak.toLocaleString();
+
+        // Chart
+        renderChart(byDay);
+
+        // By env breakdown
+        const envMap = {};
+        byEnv.forEach(e => {
+          if (!envMap[e.env_id]) envMap[e.env_id] = 0;
+          envMap[e.env_id] += e.credits;
+        });
+
+        const envEntries = Object.entries(envMap).sort((a,b) => b[1] - a[1]);
+        if (envEntries.length === 0) {
+          document.getElementById('env-breakdown').innerHTML = '<div class="empty-msg">No spending data yet</div>';
+        } else {
+          document.getElementById('env-breakdown').innerHTML = envEntries.map(([env, credits]) => `
+            <div class="breakdown-item">
+              <span class="env-id">${env}</span>
+              <span class="credits">${credits.toLocaleString()} cr</span>
+            </div>
+          `).join('');
+        }
+
+        // By action breakdown
+        const actionMap = {};
+        byEnv.forEach(e => {
+          if (!actionMap[e.action]) actionMap[e.action] = 0;
+          actionMap[e.action] += e.credits;
+        });
+
+        const actionEntries = Object.entries(actionMap).sort((a,b) => b[1] - a[1]);
+        if (actionEntries.length === 0) {
+          document.getElementById('action-breakdown').innerHTML = '<div class="empty-msg">No spending data yet</div>';
+        } else {
+          document.getElementById('action-breakdown').innerHTML = actionEntries.map(([action, credits]) => `
+            <div class="breakdown-item">
+              <span class="action">${action}</span>
+              <span class="credits">${credits.toLocaleString()} cr</span>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load costs:', e);
+      }
+    }
+
+    function renderChart(byDay) {
+      const labels = byDay.map(d => {
+        const dt = new Date(d.date);
+        return dt.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+      });
+      const values = byDay.map(d => d.credits);
+
+      if (chart) chart.destroy();
+
+      const ctx = document.getElementById('spending-chart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Credits Spent',
+            data: values,
+            backgroundColor: 'rgba(0, 115, 187, 0.7)',
+            borderColor: '#0073bb',
+            borderWidth: 1,
+            borderRadius: 2,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.parsed.y} credits`
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              grid: { color: '#eaeded' },
+              ticks: { font: { family: "'IBM Plex Mono'", size: 11 } }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { font: { family: "'IBM Plex Sans'", size: 11 } }
+            }
+          }
+        }
+      });
+    }
+
+    function setPeriod(days, el) {
+      currentDays = days;
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      loadCosts();
+    }
+
+    loadCosts();
+  </script>
+</body>
+</html>

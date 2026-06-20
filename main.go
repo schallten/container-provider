@@ -248,6 +248,7 @@ func handleCreateEnv(w http.ResponseWriter, r *http.Request) {
 		"--memory-swap=512m",
 		"--cpus=0.5",
 		"--pids-limit=64",
+		"--cap-add=NET_ADMIN",
 		"--security-opt=no-new-privileges",
 		"--add-host", "aws-metadata:169.254.169.254",
 		"-p", fmt.Sprintf("%d:2222", sshPort),
@@ -373,8 +374,8 @@ func handleShell(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	// Start bash in container with PTY
-	bash := exec.Command("docker", "exec", "-it", env.Container, "bash")
+	// Start bash in container with PTY as non-root user
+	bash := exec.Command("docker", "exec", "-u", "dev", "-it", env.Container, "bash")
 	bash.Env = append(os.Environ(), "TERM=xterm")
 
 	// Allocate PTY for proper terminal emulation
